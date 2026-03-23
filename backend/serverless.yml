@@ -1,0 +1,404 @@
+service: inventory-management-system
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-south-1
+  stage: ${opt:stage, 'dev'}
+
+layers:
+  mockData:
+    path: layers/mockData
+    name: inventory-mock-data
+    description: Shared mock data and response helpers
+    compatibleRuntimes:
+      - nodejs18.x
+
+functions:
+
+  # ── Users ──────────────────────────────────────────────────
+  getUsers:
+    handler: functions/users/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /users
+          method: get
+          cors: true
+
+  getUser:
+    handler: functions/users/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /users/{userId}
+          method: get
+          cors: true
+
+  createUser:
+    handler: functions/users/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /users
+          method: post
+          cors: true
+
+  updateUser:
+    handler: functions/users/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /users/{userId}
+          method: put
+          cors: true
+
+  # ── Warehouses ─────────────────────────────────────────────
+  getWarehouses:
+    handler: functions/warehouses/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /warehouses
+          method: get
+          cors: true
+
+  getWarehouse:
+    handler: functions/warehouses/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /warehouses/{warehouseId}
+          method: get
+          cors: true
+
+  createWarehouse:
+    handler: functions/warehouses/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /warehouses
+          method: post
+          cors: true
+
+  updateWarehouse:
+    handler: functions/warehouses/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /warehouses/{warehouseId}
+          method: put
+          cors: true
+
+  # ── Materials ──────────────────────────────────────────────
+  getMaterials:
+    handler: functions/materials/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /materials
+          method: get
+          cors: true
+
+  getMaterial:
+    handler: functions/materials/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /materials/{materialId}
+          method: get
+          cors: true
+
+  createMaterial:
+    handler: functions/materials/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /materials
+          method: post
+          cors: true
+
+  updateMaterial:
+    handler: functions/materials/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /materials/{materialId}
+          method: put
+          cors: true
+
+  # ── Inventory ──────────────────────────────────────────────
+  getInventory:
+    handler: functions/inventory/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /inventory
+          method: get
+          cors: true
+
+  getLowStock:
+    handler: functions/inventory/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /inventory/low-stock
+          method: get
+          cors: true
+
+  getInventoryItem:
+    handler: functions/inventory/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /inventory/{warehouseId}/{materialId}
+          method: get
+          cors: true
+
+  getTransactions:
+    handler: functions/inventory/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /inventory/transactions/{warehouseId}
+          method: get
+          cors: true
+
+  recordGRN:
+    handler: functions/inventory/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /inventory/grn
+          method: post
+          cors: true
+
+  recordMIN:
+    handler: functions/inventory/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /inventory/min
+          method: post
+          cors: true
+
+  # ── Requisitions ───────────────────────────────────────────
+  getRequisitions:
+    handler: functions/requisitions/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /requisitions
+          method: get
+          cors: true
+
+  getRequisition:
+    handler: functions/requisitions/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /requisitions/{requisitionId}
+          method: get
+          cors: true
+
+  createRequisition:
+    handler: functions/requisitions/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /requisitions
+          method: post
+          cors: true
+
+  approveRequisition:
+    handler: functions/requisitions/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /requisitions/{requisitionId}/approve
+          method: put
+          cors: true
+
+  rejectRequisition:
+    handler: functions/requisitions/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /requisitions/{requisitionId}/reject
+          method: put
+          cors: true
+
+  # ── Vendors ────────────────────────────────────────────────
+  getVendors:
+    handler: functions/vendors/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /vendors
+          method: get
+          cors: true
+
+  getVendor:
+    handler: functions/vendors/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /vendors/{vendorId}
+          method: get
+          cors: true
+
+  createVendor:
+    handler: functions/vendors/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /vendors
+          method: post
+          cors: true
+
+  updateVendor:
+    handler: functions/vendors/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /vendors/{vendorId}
+          method: put
+          cors: true
+
+  # ── Purchase Orders ────────────────────────────────────────
+  getPurchaseOrders:
+    handler: functions/purchaseOrders/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /purchase-orders
+          method: get
+          cors: true
+
+  getPurchaseOrder:
+    handler: functions/purchaseOrders/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /purchase-orders/{poId}
+          method: get
+          cors: true
+
+  createPurchaseOrder:
+    handler: functions/purchaseOrders/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /purchase-orders
+          method: post
+          cors: true
+
+  sendPurchaseOrder:
+    handler: functions/purchaseOrders/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /purchase-orders/{poId}/send
+          method: put
+          cors: true
+
+  deliverPurchaseOrder:
+    handler: functions/purchaseOrders/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /purchase-orders/{poId}/deliver
+          method: put
+          cors: true
+
+  # ── Transfers ──────────────────────────────────────────────
+  getTransfers:
+    handler: functions/transfers/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /transfers
+          method: get
+          cors: true
+
+  getTransfer:
+    handler: functions/transfers/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /transfers/{transferId}
+          method: get
+          cors: true
+
+  createTransfer:
+    handler: functions/transfers/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /transfers
+          method: post
+          cors: true
+
+  approveTransfer:
+    handler: functions/transfers/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /transfers/{transferId}/approve
+          method: put
+          cors: true
+
+  # ── Analytics ──────────────────────────────────────────────
+  getAnalytics:
+    handler: functions/analytics/index.handler
+    layers:
+      - !Ref MockDataLambdaLayer
+    events:
+      - http:
+          path: /analytics/{report}
+          method: get
+          cors: true
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 4000
+    noPrependStageInUrl: true

@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Serverless
+.serverless/
+backend/.serverless/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output
+frontend/build/
+frontend/dist/
+
+# IDE
+.vscode/settings.json
+.idea/
