@@ -1,5 +1,5 @@
-const { inventory, transactions, requisitions, purchaseOrders, materials, warehouses } = require('../../layers/mockData/nodejs/mockData');
-const { ok, badReq } = require('../../layers/mockData/nodejs/response');
+const { inventory, transactions, requisitions, purchaseOrders, materials, warehouses } = require('/opt/nodejs/mockData');
+const { ok, badReq } = require('/opt/nodejs/response');
 
 exports.handler = async (event) => {
   const report = event.pathParameters?.report;

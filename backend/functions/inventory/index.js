@@ -1,5 +1,5 @@
-const { inventory, transactions, materials, warehouses } = require('../../layers/mockData/nodejs/mockData');
-const { ok, created, badReq, notFound } = require('../../layers/mockData/nodejs/response');
+const { inventory, transactions, materials, warehouses } = require('/opt/nodejs/mockData');
+const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
 
 // Enriches a stock row with human-readable names
 const enrich = (i) => ({

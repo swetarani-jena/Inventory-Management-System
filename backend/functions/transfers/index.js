@@ -1,5 +1,5 @@
-const { transfers, inventory, materials, warehouses } = require('../../layers/mockData/nodejs/mockData');
-const { ok, created, badReq, notFound } = require('../../layers/mockData/nodejs/response');
+const { transfers, inventory, materials, warehouses } = require('/opt/nodejs/mockData');
+const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
 
 const enrich = (t) => ({
   ...t,

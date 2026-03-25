@@ -1,5 +1,5 @@
-const { vendors }          = require('../../layers/mockData/nodejs/mockData');
-const { ok, created, badReq, notFound } = require('../../layers/mockData/nodejs/response');
+const { vendors }          = require('/opt/nodejs/mockData');
+const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
 
 exports.handler = async (event) => {
   const method   = event.httpMethod;
