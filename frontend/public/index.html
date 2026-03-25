@@ -6,6 +6,13 @@
     <title>Inventory Management System</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+  var redirect = sessionStorage.redirect;
+  delete sessionStorage.redirect;
+  if (redirect && redirect !== '/') {
+    history.replaceState(null, null, redirect);
+  }
+</script>
   </head>
   <body>
     <div id="root"></div>
