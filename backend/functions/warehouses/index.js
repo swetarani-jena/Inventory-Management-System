@@ -28,14 +28,23 @@ exports.handler = async (event) => {
 
   if (method === 'PUT' && warehouseId) {
     const body = JSON.parse(event.body || '{}');
-    const updates = Object.entries(body);
+    
+    const { warehouseId: _skip, ...updateFields } = body;
+    
+    const updates = Object.entries(updateFields);
+    if (!updates.length) return badReq('No fields to update');
+
     const expr   = 'SET ' + updates.map(([k], i) => `#k${i} = :v${i}`).join(', ');
     const names  = Object.fromEntries(updates.map(([k], i) => [`#k${i}`, k]));
     const values = Object.fromEntries(updates.map(([k, v], i) => [`:v${i}`, v]));
+
     const { Attributes } = await db.send(new UpdateCommand({
-      TableName: TABLE, Key: { warehouseId },
-      UpdateExpression: expr, ExpressionAttributeNames: names,
-      ExpressionAttributeValues: values, ReturnValues: 'ALL_NEW',
+      TableName: TABLE,
+      Key: { warehouseId },
+      UpdateExpression: expr,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
+      ReturnValues: 'ALL_NEW',
     }));
     return ok(Attributes);
   }

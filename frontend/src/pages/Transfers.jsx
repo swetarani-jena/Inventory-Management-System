@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box, Card, Table, TableBody, TableCell, TableHead, TableRow,
   Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -50,14 +50,16 @@ const CreateDialog = ({ open, onClose, warehouses, materials, onSubmit }) => {
   );
 };
 
-const TRow = ({ t, onApprove }) => {
+// ← FIXED: accept warehouseMap + materialMap as props
+const TRow = ({ t, warehouseMap, materialMap, onApprove }) => {
   const [open, setOpen] = useState(false);
   return (
     <>
       <TableRow hover>
         <TableCell><Typography variant="body2" fontWeight={700}>{t.transferNo}</Typography></TableCell>
-        <TableCell>{t.fromWarehouseName}</TableCell>
-        <TableCell>{t.toWarehouseName}</TableCell>
+        {/* ← FIXED: resolve names from maps */}
+        <TableCell>{warehouseMap[t.fromWarehouse] || t.fromWarehouse}</TableCell>
+        <TableCell>{warehouseMap[t.toWarehouse]   || t.toWarehouse}</TableCell>
         <TableCell>{t.date}</TableCell>
         <TableCell><StatusChip status={t.status} /></TableCell>
         <TableCell>
@@ -71,9 +73,12 @@ const TRow = ({ t, onApprove }) => {
         <TableCell colSpan={6} sx={{ py: 0 }}>
           <Collapse in={open}>
             <Box sx={{ p: 2, bgcolor: 'grey.50' }}>
-              {t.items?.map(item => (
-                <Box key={item.itemId} sx={{ display: 'flex', gap: 3, py: 0.5 }}>
-                  <Typography variant="body2" fontWeight={600} sx={{ width: 180 }}>{item.materialName}</Typography>
+              {t.items?.map((item, i) => (
+                <Box key={item.itemId || i} sx={{ display: 'flex', gap: 3, py: 0.5 }}>
+                  {/* ← FIXED: resolve material name from map */}
+                  <Typography variant="body2" fontWeight={600} sx={{ width: 180 }}>
+                    {materialMap[item.materialId] || item.materialId}
+                  </Typography>
                   <Typography variant="body2">{item.quantity} {item.unit}</Typography>
                 </Box>
               ))}
@@ -93,8 +98,14 @@ export default function Transfers() {
   const { data: warehouses } = useFetch(api.getWarehouses);
   const { data: materials  } = useFetch(api.getMaterials);
 
-  const handleCreate  = async (body) => { await api.createTransfer(body);  reload(); setMsg({ type: 'success', text: 'Transfer requested!' }); };
-  const handleApprove = async (id)   => { await api.approveTransfer(id, {}); reload(); setMsg({ type: 'success', text: 'Transfer approved and stock moved!' }); };
+  // ← NEW: lookup maps
+  const warehouseMap = useMemo(() =>
+    Object.fromEntries((warehouses || []).map(w => [w.warehouseId, w.name])), [warehouses]);
+  const materialMap = useMemo(() =>
+    Object.fromEntries((materials || []).map(m => [m.materialId, m.name])), [materials]);
+
+  const handleCreate  = async (body) => { await api.createTransfer(body);         reload(); setMsg({ type: 'success', text: 'Transfer requested!' }); };
+  const handleApprove = async (id)   => { await api.approveTransfer(id, { approvedBy: 'U002' }); reload(); setMsg({ type: 'success', text: 'Transfer approved and stock moved!' }); };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
@@ -118,7 +129,11 @@ export default function Transfers() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {transfers?.map(t => <TRow key={t.transferId} t={t} onApprove={handleApprove} />)}
+            {transfers?.map(t => (
+              <TRow key={t.transferId} t={t}
+                warehouseMap={warehouseMap} materialMap={materialMap}
+                onApprove={handleApprove} />
+            ))}
           </TableBody>
         </Table>
       </Card>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box, Card, Table, TableBody, TableCell, TableHead, TableRow,
   Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -15,12 +15,7 @@ const PRIORITIES = ['low', 'medium', 'high'];
 const CreateDialog = ({ open, onClose, warehouses, materials, onSubmit }) => {
   const [form, setForm] = useState({ warehouseId: '', project: '', priority: 'medium', items: [{ materialId: '', quantity: '', unit: '', remarks: '' }] });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-
-  const setItem = (i, k, v) => {
-    const items = [...form.items];
-    items[i][k] = v;
-    setForm(p => ({ ...p, items }));
-  };
+  const setItem = (i, k, v) => { const items = [...form.items]; items[i][k] = v; setForm(p => ({ ...p, items })); };
   const addItem    = () => setForm(p => ({ ...p, items: [...p.items, { materialId: '', quantity: '', unit: '', remarks: '' }] }));
   const removeItem = (i) => setForm(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }));
 
@@ -43,15 +38,14 @@ const CreateDialog = ({ open, onClose, warehouses, materials, onSubmit }) => {
           </TextField>
         </Box>
         <TextField label="Project Name" value={form.project} onChange={e => set('project', e.target.value)} fullWidth />
-
         <Typography variant="subtitle2" fontWeight={700} mt={1}>Items</Typography>
         {form.items.map((item, i) => (
           <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             <TextField select label="Material" value={item.materialId} onChange={e => setItem(i, 'materialId', e.target.value)} sx={{ flex: 2 }}>
               {materials?.map(m => <MenuItem key={m.materialId} value={m.materialId}>{m.name}</MenuItem>)}
             </TextField>
-            <TextField label="Qty" type="number" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)} sx={{ flex: 1 }} />
-            <TextField label="Unit" value={item.unit} onChange={e => setItem(i, 'unit', e.target.value)} sx={{ flex: 1 }} />
+            <TextField label="Qty"     type="number" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)} sx={{ flex: 1 }} />
+            <TextField label="Unit"    value={item.unit}    onChange={e => setItem(i, 'unit',    e.target.value)} sx={{ flex: 1 }} />
             <TextField label="Remarks" value={item.remarks} onChange={e => setItem(i, 'remarks', e.target.value)} sx={{ flex: 2 }} />
             {form.items.length > 1 && <IconButton onClick={() => removeItem(i)} color="error" size="small"><Cancel /></IconButton>}
           </Box>
@@ -66,7 +60,7 @@ const CreateDialog = ({ open, onClose, warehouses, materials, onSubmit }) => {
   );
 };
 
-const ExpandableRow = ({ req, onApprove, onReject }) => {
+const ExpandableRow = ({ req, warehouseMap, materialMap, onApprove, onReject }) => {
   const [open, setOpen] = useState(false);
   const priorityColor = { low: 'default', medium: 'warning', high: 'error' };
 
@@ -75,14 +69,15 @@ const ExpandableRow = ({ req, onApprove, onReject }) => {
       <TableRow hover>
         <TableCell><Typography variant="body2" fontWeight={700}>{req.requisitionNo}</Typography></TableCell>
         <TableCell>{req.project}</TableCell>
-        <TableCell>{req.warehouseName}</TableCell>
+        {/* ← FIXED: resolve name from warehouseMap */}
+        <TableCell>{warehouseMap[req.warehouseId] || req.warehouseId}</TableCell>
         <TableCell><Chip label={req.priority?.toUpperCase()} size="small" color={priorityColor[req.priority] || 'default'} /></TableCell>
         <TableCell>{req.date}</TableCell>
         <TableCell><StatusChip status={req.status} /></TableCell>
         <TableCell>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
             {req.status === 'pending' && <>
-              <IconButton size="small" color="success" onClick={() => onApprove(req.requisitionId, true)}><CheckCircle /></IconButton>
+              <IconButton size="small" color="success" onClick={() => onApprove(req.requisitionId)}><CheckCircle /></IconButton>
               <IconButton size="small" color="error"   onClick={() => onReject(req.requisitionId)}><Cancel /></IconButton>
             </>}
             <IconButton size="small" onClick={() => setOpen(o => !o)}>{open ? <ExpandLess /> : <ExpandMore />}</IconButton>
@@ -94,9 +89,12 @@ const ExpandableRow = ({ req, onApprove, onReject }) => {
           <Collapse in={open}>
             <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Typography variant="subtitle2" fontWeight={700} mb={1}>Items</Typography>
-              {req.items?.map(item => (
-                <Box key={item.itemId} sx={{ display: 'flex', gap: 3, py: 0.5 }}>
-                  <Typography variant="body2" fontWeight={600} sx={{ width: 180 }}>{item.materialName}</Typography>
+              {req.items?.map((item, i) => (
+                <Box key={item.itemId || i} sx={{ display: 'flex', gap: 3, py: 0.5 }}>
+                  {/* ← FIXED: resolve name from materialMap */}
+                  <Typography variant="body2" fontWeight={600} sx={{ width: 180 }}>
+                    {materialMap[item.materialId] || item.materialId}
+                  </Typography>
                   <Typography variant="body2">{item.quantity} {item.unit}</Typography>
                   <Typography variant="body2" color="text.secondary">{item.remarks}</Typography>
                 </Box>
@@ -114,14 +112,21 @@ export default function Requisitions() {
   const [dialog, setDialog] = useState(false);
   const [msg,    setMsg]    = useState(null);
 
-  const statusFilter = ['', '?status=pending', '?status=approved', '?status=rejected'];
-  const { data: reqs, loading, reload } = useFetch(() => api.getRequisitions(statusFilter[tab]), [tab]);
+  // ← FIXED: pass status as proper object, not raw string
+  const statusFilters = [{}, { status: 'pending' }, { status: 'approved' }, { status: 'rejected' }];
+  const { data: reqs, loading, reload } = useFetch(() => api.getRequisitions(statusFilters[tab]), [tab]);
   const { data: warehouses } = useFetch(api.getWarehouses);
   const { data: materials  } = useFetch(api.getMaterials);
 
+  // ← NEW: lookup maps so rows can resolve names without backend enrichment
+  const warehouseMap = useMemo(() =>
+    Object.fromEntries((warehouses || []).map(w => [w.warehouseId, w.name])), [warehouses]);
+  const materialMap = useMemo(() =>
+    Object.fromEntries((materials || []).map(m => [m.materialId, m.name])), [materials]);
+
   const handleCreate  = async (body) => { await api.createRequisition(body); reload(); setMsg({ type: 'success', text: 'Requisition created!' }); };
-  const handleApprove = async (id, stockAvailable) => { await api.approveRequisition(id, { stockAvailable }); reload(); };
-  const handleReject  = async (id) => { await api.rejectRequisition(id, { reason: 'Rejected by manager' }); reload(); };
+  const handleApprove = async (id)   => { await api.approveRequisition(id, { approvedBy: 'U002' }); reload(); setMsg({ type: 'success', text: 'Approved!' }); };
+  const handleReject  = async (id)   => { await api.rejectRequisition(id,  { reason: 'Rejected by manager' }); reload(); setMsg({ type: 'success', text: 'Rejected.' }); };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
@@ -151,10 +156,14 @@ export default function Requisitions() {
           </TableHead>
           <TableBody>
             {reqs?.map(req => (
-              <ExpandableRow key={req.requisitionId} req={req} onApprove={handleApprove} onReject={handleReject} />
+              <ExpandableRow key={req.requisitionId} req={req}
+                warehouseMap={warehouseMap} materialMap={materialMap}
+                onApprove={handleApprove} onReject={handleReject} />
             ))}
             {(!reqs || reqs.length === 0) && (
-              <TableRow><TableCell colSpan={7} align="center"><Typography color="text.secondary" py={3}>No requisitions found</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} align="center">
+                <Typography color="text.secondary" py={3}>No requisitions found</Typography>
+              </TableCell></TableRow>
             )}
           </TableBody>
         </Table>

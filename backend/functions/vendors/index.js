@@ -28,7 +28,9 @@ exports.handler = async (event) => {
 
   if (method === 'PUT' && vendorId) {
     const body = JSON.parse(event.body || '{}');
-    const updates = Object.entries(body);
+    const { vendorId: _skip, ...updateFields } = body;
+    const updates = Object.entries(updateFields);
+    if (!updates.length) return badReq('No fields to update');
     const expr   = 'SET ' + updates.map(([k], i) => `#k${i} = :v${i}`).join(', ');
     const names  = Object.fromEntries(updates.map(([k], i) => [`#k${i}`, k]));
     const values = Object.fromEntries(updates.map(([k, v], i) => [`:v${i}`, v]));

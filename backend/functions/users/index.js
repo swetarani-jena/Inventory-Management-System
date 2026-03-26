@@ -28,7 +28,8 @@ exports.handler = async (event) => {
 
   if (method === 'PUT' && userId) {
     const body = JSON.parse(event.body || '{}');
-    const updates = Object.entries(body);
+    const { userId: _skip, ...updateFields } = body;
+    const updates = Object.entries(updateFields);
     if (!updates.length) return badReq('No fields to update');
     const expr   = 'SET ' + updates.map(([k], i) => `#k${i} = :v${i}`).join(', ');
     const names  = Object.fromEntries(updates.map(([k], i) => [`#k${i}`, k]));
