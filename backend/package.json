@@ -3,11 +3,16 @@
   "version": "1.0.0",
   "description": "IGNOU BCSP-064 — Construction Material Inventory Management System",
   "scripts": {
-    "dev":    "serverless offline",
+    "dev": "serverless offline",
     "deploy": "serverless deploy --stage prod"
   },
   "devDependencies": {
-    "serverless":         "^3.38.0",
+    "serverless": "^3.38.0",
     "serverless-offline": "^13.3.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.758.0",
+    "@aws-sdk/lib-dynamodb": "3.758.0",
+    "@smithy/smithy-client": "4.2.3"
   }
 }

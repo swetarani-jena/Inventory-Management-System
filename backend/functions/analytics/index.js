@@ -1,23 +1,44 @@
-const { inventory, transactions, requisitions, purchaseOrders, materials, warehouses } = require('/opt/nodejs/mockData');
+const { db } = require('../../lib/db');
 const { ok, badReq } = require('/opt/nodejs/response');
+const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+
+const T = {
+  warehouses:     process.env.WAREHOUSES_TABLE,
+  materials:      process.env.MATERIALS_TABLE,
+  inventory:      process.env.INVENTORY_TABLE,
+  transactions:   process.env.TRANSACTIONS_TABLE,
+  requisitions:   process.env.REQUISITIONS_TABLE,
+  purchaseOrders: process.env.PURCHASE_ORDERS_TABLE,
+};
+
+const scan = (TableName, filter) => db.send(new ScanCommand({ TableName, ...filter })).then(r => r.Items);
 
 exports.handler = async (event) => {
   const report = event.pathParameters?.report;
 
-  // GET /analytics/dashboard
   if (report === 'dashboard') {
+    const [warehouses, materials, inventory, requisitions, purchaseOrders] = await Promise.all([
+      scan(T.warehouses,   { FilterExpression: '#s = :a', ExpressionAttributeNames: { '#s': 'status' }, ExpressionAttributeValues: { ':a': 'active' } }),
+      scan(T.materials),
+      scan(T.inventory,    { FilterExpression: '#s = :l', ExpressionAttributeNames: { '#s': 'status' }, ExpressionAttributeValues: { ':l': 'low' } }),
+      scan(T.requisitions, { FilterExpression: '#s = :p', ExpressionAttributeNames: { '#s': 'status' }, ExpressionAttributeValues: { ':p': 'pending' } }),
+      scan(T.purchaseOrders),
+    ]);
     return ok({
-      totalWarehouses:     warehouses.filter(w => w.status === 'active').length,
+      totalWarehouses:     warehouses.length,
       totalMaterials:      materials.length,
-      lowStockItems:       inventory.filter(i => i.status === 'low').length,
-      pendingRequisitions: requisitions.filter(r => r.status === 'pending').length,
+      lowStockItems:       inventory.length,
+      pendingRequisitions: requisitions.length,
       activePOs:           purchaseOrders.filter(p => !['delivered', 'cancelled'].includes(p.status)).length,
-      totalInventoryValue: purchaseOrders.filter(p => p.status === 'delivered').reduce((s, po) => s + po.totalAmount, 0),
+      totalInventoryValue: purchaseOrders.filter(p => p.status === 'delivered').reduce((s, po) => s + (po.totalAmount || 0), 0),
     });
   }
 
-  // GET /analytics/stock-summary
   if (report === 'stock-summary') {
+    const [warehouses, inventory, materials] = await Promise.all([
+      scan(T.warehouses), scan(T.inventory), scan(T.materials),
+    ]);
+    const matMap = Object.fromEntries(materials.map(m => [m.materialId, m]));
     return ok(warehouses.map(wh => {
       const whStock = inventory.filter(i => i.warehouseId === wh.warehouseId);
       return {
@@ -25,10 +46,10 @@ exports.handler = async (event) => {
         warehouseName: wh.name,
         totalItems:    whStock.length,
         lowStockCount: whStock.filter(i => i.status === 'low').length,
-        items:         whStock.map(i => ({
+        items: whStock.map(i => ({
           materialId:   i.materialId,
-          materialName: materials.find(m => m.materialId === i.materialId)?.name,
-          unit:         materials.find(m => m.materialId === i.materialId)?.unit,
+          materialName: matMap[i.materialId]?.name,
+          unit:         matMap[i.materialId]?.unit,
           quantity:     i.quantity,
           status:       i.status,
         })),
@@ -36,43 +57,41 @@ exports.handler = async (event) => {
     }));
   }
 
-  // GET /analytics/consumption
   if (report === 'consumption') {
+    const [transactions, materials] = await Promise.all([
+      scan(T.transactions, { FilterExpression: '#t = :min', ExpressionAttributeNames: { '#t': 'type' }, ExpressionAttributeValues: { ':min': 'MIN' } }),
+      scan(T.materials),
+    ]);
+    const matMap = Object.fromEntries(materials.map(m => [m.materialId, m]));
     const map = {};
-    transactions.filter(t => t.type === 'MIN').forEach(t => {
+    transactions.forEach(t => {
       if (!map[t.materialId]) map[t.materialId] = { materialId: t.materialId, totalConsumed: 0, count: 0 };
       map[t.materialId].totalConsumed += t.quantity;
       map[t.materialId].count         += 1;
     });
     return ok(Object.values(map).map(c => ({
       ...c,
-      materialName: materials.find(m => m.materialId === c.materialId)?.name,
-      unit:         materials.find(m => m.materialId === c.materialId)?.unit,
+      materialName: matMap[c.materialId]?.name,
+      unit:         matMap[c.materialId]?.unit,
     })));
   }
 
-  // GET /analytics/procurement-summary
   if (report === 'procurement-summary') {
-    const statusGroups = purchaseOrders.reduce((acc, po) => {
-      acc[po.status] = (acc[po.status] || 0) + 1;
-      return acc;
-    }, {});
+    const pos = await scan(T.purchaseOrders);
+    const statusGroups = pos.reduce((acc, po) => { acc[po.status] = (acc[po.status] || 0) + 1; return acc; }, {});
     return ok({
       statusGroups,
-      totalOrders:   purchaseOrders.length,
-      totalSpend:    purchaseOrders.reduce((s, po) => s + po.totalAmount, 0),
-      deliveredSpend:purchaseOrders.filter(p => p.status === 'delivered').reduce((s, po) => s + po.totalAmount, 0),
+      totalOrders:    pos.length,
+      totalSpend:     pos.reduce((s, po) => s + (po.totalAmount || 0), 0),
+      deliveredSpend: pos.filter(p => p.status === 'delivered').reduce((s, po) => s + (po.totalAmount || 0), 0),
     });
   }
 
-  // GET /analytics/requisition-summary
   if (report === 'requisition-summary') {
-    const statusGroups = requisitions.reduce((acc, r) => {
-      acc[r.status] = (acc[r.status] || 0) + 1;
-      return acc;
-    }, {});
-    return ok({ statusGroups, total: requisitions.length });
+    const reqs = await scan(T.requisitions);
+    const statusGroups = reqs.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
+    return ok({ statusGroups, total: reqs.length });
   }
 
-  return badReq(`Unknown report: ${report}. Valid: dashboard, stock-summary, consumption, procurement-summary, requisition-summary`);
+  return badReq(`Unknown report: ${report}`);
 };

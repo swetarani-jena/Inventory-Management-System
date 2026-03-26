@@ -1,87 +1,69 @@
-const { requisitions, materials, warehouses } = require('/opt/nodejs/mockData');
+const { db } = require('../../lib/db');
 const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
+const { ScanCommand, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
-const enrich = (r) => ({
-  ...r,
-  warehouseName: warehouses.find(w => w.warehouseId === r.warehouseId)?.name,
-  items: r.items.map(item => ({
-    ...item,
-    materialName: materials.find(m => m.materialId === item.materialId)?.name,
-  })),
-});
+const TABLE = process.env.REQUISITIONS_TABLE;
 
 exports.handler = async (event) => {
   const method        = event.httpMethod;
   const requisitionId = event.pathParameters?.requisitionId;
-  const action        = event.pathParameters?.action;   // approve | reject
+  const subPath       = event.pathParameters?.subPath; // 'approve' | 'reject'
   const qs            = event.queryStringParameters || {};
 
-  // GET /requisitions  (?status=pending &warehouseId=W001)
   if (method === 'GET' && !requisitionId) {
-    let result = [...requisitions];
-    if (qs.status)      result = result.filter(r => r.status      === qs.status);
-    if (qs.warehouseId) result = result.filter(r => r.warehouseId === qs.warehouseId);
-    if (qs.requestedBy) result = result.filter(r => r.requestedBy === qs.requestedBy);
-    return ok(result.map(enrich));
+    let params = { TableName: TABLE };
+    if (qs.status) {
+      params.FilterExpression = '#s = :status';
+      params.ExpressionAttributeNames  = { '#s': 'status' };
+      params.ExpressionAttributeValues = { ':status': qs.status };
+    }
+    const { Items } = await db.send(new ScanCommand(params));
+    return ok(Items);
   }
 
-  // GET /requisitions/{requisitionId}
-  if (method === 'GET' && requisitionId && !action) {
-    const req = requisitions.find(r => r.requisitionId === requisitionId);
-    return req ? ok(enrich(req)) : notFound('Requisition not found');
+  if (method === 'GET' && requisitionId) {
+    const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { requisitionId } }));
+    return Item ? ok(Item) : notFound('Requisition not found');
   }
 
-  // POST /requisitions — create new
   if (method === 'POST') {
     const body = JSON.parse(event.body || '{}');
-    const { warehouseId, project, priority, items, requestedBy } = body;
-    if (!warehouseId || !project || !items?.length) return badReq('warehouseId, project and items are required');
-
-    const newReq = {
-      requisitionId: `REQ${String(requisitions.length + 1).padStart(3, '0')}`,
-      requisitionNo: `REQ-2025-${String(requisitions.length + 1).padStart(3, '0')}`,
-      date:          new Date().toISOString().split('T')[0],
-      requestedBy:   requestedBy || 'U001',
-      warehouseId,
-      project,
-      priority:      priority || 'medium',
-      status:        'pending',
-      approvedBy:    null,
-      items:         items.map((item, i) => ({
-        itemId:     `RI${String(Date.now() + i).slice(-4)}`,
-        materialId: item.materialId,
-        quantity:   item.quantity,
-        unit:       item.unit || '',
-        remarks:    item.remarks || '',
-      })),
+    if (!body.requestedBy || !body.warehouseId || !body.items?.length)
+      return badReq('requestedBy, warehouseId, items are required');
+    const req = {
+      requisitionId: `REQ${Date.now()}`,
+      requisitionNo: `REQ-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+      date:   new Date().toISOString().split('T')[0],
+      status: 'pending',
+      approvedBy: null,
+      ...body,
     };
-    requisitions.push(newReq);
-    return created(enrich(newReq));
+    await db.send(new PutCommand({ TableName: TABLE, Item: req }));
+    return created(req);
   }
 
-  // PUT /requisitions/{requisitionId}/approve
-  if (method === 'PUT' && action === 'approve') {
-    const idx = requisitions.findIndex(r => r.requisitionId === requisitionId);
-    if (idx === -1) return notFound('Requisition not found');
-    if (requisitions[idx].status !== 'pending') return badReq(`Cannot approve — current status: ${requisitions[idx].status}`);
-
-    const { stockAvailable, approvedBy } = JSON.parse(event.body || '{}');
-    requisitions[idx].status     = stockAvailable ? 'approved' : 'awaiting_procurement';
-    requisitions[idx].approvedBy = approvedBy || 'U002';
-    return ok(enrich(requisitions[idx]));
+  if (method === 'PUT' && requisitionId && subPath === 'approve') {
+    const body = JSON.parse(event.body || '{}');
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: TABLE, Key: { requisitionId },
+      UpdateExpression: 'SET #s = :s, approvedBy = :a',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: { ':s': 'approved', ':a': body.approvedBy || 'unknown' },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return ok(Attributes);
   }
 
-  // PUT /requisitions/{requisitionId}/reject
-  if (method === 'PUT' && action === 'reject') {
-    const idx = requisitions.findIndex(r => r.requisitionId === requisitionId);
-    if (idx === -1) return notFound('Requisition not found');
-    if (requisitions[idx].status !== 'pending') return badReq(`Cannot reject — current status: ${requisitions[idx].status}`);
-
-    const { reason, approvedBy } = JSON.parse(event.body || '{}');
-    requisitions[idx].status       = 'rejected';
-    requisitions[idx].approvedBy   = approvedBy || 'U002';
-    requisitions[idx].rejectReason = reason || '';
-    return ok(enrich(requisitions[idx]));
+  if (method === 'PUT' && requisitionId && subPath === 'reject') {
+    const body = JSON.parse(event.body || '{}');
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: TABLE, Key: { requisitionId },
+      UpdateExpression: 'SET #s = :s, rejectedBy = :r, rejectionReason = :rr',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: { ':s': 'rejected', ':r': body.rejectedBy || 'unknown', ':rr': body.reason || '' },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return ok(Attributes);
   }
 
   return badReq('Method not supported');

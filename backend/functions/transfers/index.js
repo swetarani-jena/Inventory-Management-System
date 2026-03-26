@@ -1,93 +1,84 @@
-const { transfers, inventory, materials, warehouses } = require('/opt/nodejs/mockData');
+const { db } = require('../../lib/db');
 const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
+const { ScanCommand, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
-const enrich = (t) => ({
-  ...t,
-  fromWarehouseName: warehouses.find(w => w.warehouseId === t.fromWarehouse)?.name,
-  toWarehouseName:   warehouses.find(w => w.warehouseId === t.toWarehouse)?.name,
-  items: t.items.map(item => ({
-    ...item,
-    materialName: materials.find(m => m.materialId === item.materialId)?.name,
-  })),
-});
+const TABLE     = process.env.TRANSFERS_TABLE;
+const INV_TABLE = process.env.INVENTORY_TABLE;
+const MAT_TABLE = process.env.MATERIALS_TABLE;
 
 exports.handler = async (event) => {
   const method     = event.httpMethod;
   const transferId = event.pathParameters?.transferId;
-  const action     = event.pathParameters?.action;   // approve
-  const qs         = event.queryStringParameters || {};
+  const subPath    = event.pathParameters?.subPath;
 
-  // GET /transfers  (?status=pending)
   if (method === 'GET' && !transferId) {
-    const result = qs.status ? transfers.filter(t => t.status === qs.status) : transfers;
-    return ok(result.map(enrich));
+    const { Items } = await db.send(new ScanCommand({ TableName: TABLE }));
+    return ok(Items);
   }
 
-  // GET /transfers/{transferId}
-  if (method === 'GET' && transferId && !action) {
-    const t = transfers.find(t => t.transferId === transferId);
-    return t ? ok(enrich(t)) : notFound('Transfer not found');
+  if (method === 'GET' && transferId) {
+    const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { transferId } }));
+    return Item ? ok(Item) : notFound('Transfer not found');
   }
 
-  // POST /transfers — request a transfer
   if (method === 'POST') {
     const body = JSON.parse(event.body || '{}');
-    const { fromWarehouse, toWarehouse, items, requestedBy } = body;
-    if (!fromWarehouse || !toWarehouse || !items?.length) return badReq('fromWarehouse, toWarehouse and items are required');
-    if (fromWarehouse === toWarehouse) return badReq('Source and destination cannot be the same warehouse');
-
-    const newTransfer = {
-      transferId:   `TR${String(transfers.length + 1).padStart(3, '0')}`,
-      transferNo:   `TRF-2025-${String(transfers.length + 1).padStart(3, '0')}`,
-      date:         new Date().toISOString().split('T')[0],
-      fromWarehouse, toWarehouse,
-      status:       'pending',
-      requestedBy:  requestedBy || 'U001',
-      approvedBy:   null,
-      items:        items.map((item, i) => ({
-        itemId:     `TI${String(Date.now() + i).slice(-4)}`,
-        materialId: item.materialId,
-        quantity:   item.quantity,
-        unit:       item.unit || '',
-      })),
+    if (!body.fromWarehouse || !body.toWarehouse || !body.items?.length)
+      return badReq('fromWarehouse, toWarehouse, items are required');
+    const transfer = {
+      transferId:  `TR${Date.now()}`,
+      transferNo:  `TRF-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+      date:        new Date().toISOString().split('T')[0],
+      status:      'pending',
+      approvedBy:  null,
+      ...body,
     };
-    transfers.push(newTransfer);
-    return created(enrich(newTransfer));
+    await db.send(new PutCommand({ TableName: TABLE, Item: transfer }));
+    return created(transfer);
   }
 
-  // PUT /transfers/{transferId}/approve — moves stock between warehouses
-  if (method === 'PUT' && action === 'approve') {
-    const idx = transfers.findIndex(t => t.transferId === transferId);
-    if (idx === -1) return notFound('Transfer not found');
-    if (transfers[idx].status !== 'pending') return badReq(`Cannot approve — current status: ${transfers[idx].status}`);
+  if (method === 'PUT' && transferId && subPath === 'approve') {
+    const body     = JSON.parse(event.body || '{}');
+    const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { transferId } }));
+    if (!Item) return notFound('Transfer not found');
 
-    const { fromWarehouse, toWarehouse, items } = transfers[idx];
+    // Move stock for each item
+    for (const item of Item.items) {
+      const { materialId, quantity } = item;
+      const [srcRes, dstRes, matRes] = await Promise.all([
+        db.send(new GetCommand({ TableName: INV_TABLE, Key: { warehouseId: Item.fromWarehouse, materialId } })),
+        db.send(new GetCommand({ TableName: INV_TABLE, Key: { warehouseId: Item.toWarehouse,   materialId } })),
+        db.send(new GetCommand({ TableName: MAT_TABLE, Key: { materialId } })),
+      ]);
+      if (!srcRes.Item || srcRes.Item.quantity < quantity)
+        return badReq(`Insufficient stock for ${materialId} in source warehouse`);
 
-    // Validate sufficient stock first
-    for (const item of items) {
-      const src = inventory.find(i => i.warehouseId === fromWarehouse && i.materialId === item.materialId);
-      if (!src || src.quantity < item.quantity) {
-        return badReq(`Insufficient stock for ${item.materialId} in warehouse ${fromWarehouse}`);
-      }
+      const reorderLevel = matRes.Item?.reorderLevel || 0;
+      const srcQty = srcRes.Item.quantity - quantity;
+      const dstQty = (dstRes.Item?.quantity || 0) + quantity;
+
+      await Promise.all([
+        db.send(new UpdateCommand({
+          TableName: INV_TABLE, Key: { warehouseId: Item.fromWarehouse, materialId },
+          UpdateExpression: 'SET quantity = :q, #s = :s',
+          ExpressionAttributeNames:  { '#s': 'status' },
+          ExpressionAttributeValues: { ':q': srcQty, ':s': srcQty <= reorderLevel ? 'low' : 'normal' },
+        })),
+        db.send(new PutCommand({
+          TableName: INV_TABLE,
+          Item: { warehouseId: Item.toWarehouse, materialId, quantity: dstQty, status: dstQty <= reorderLevel ? 'low' : 'normal', lastUpdated: new Date().toISOString().split('T')[0] },
+        })),
+      ]);
     }
 
-    // Move stock
-    for (const item of items) {
-      const srcIdx = inventory.findIndex(i => i.warehouseId === fromWarehouse && i.materialId === item.materialId);
-      inventory[srcIdx].quantity -= item.quantity;
-
-      const dstIdx = inventory.findIndex(i => i.warehouseId === toWarehouse && i.materialId === item.materialId);
-      if (dstIdx === -1) {
-        inventory.push({ warehouseId: toWarehouse, materialId: item.materialId, quantity: item.quantity, lastUpdated: new Date().toISOString().split('T')[0], status: 'normal' });
-      } else {
-        inventory[dstIdx].quantity += item.quantity;
-      }
-    }
-
-    const { approvedBy } = JSON.parse(event.body || '{}');
-    transfers[idx].status     = 'completed';
-    transfers[idx].approvedBy = approvedBy || 'U002';
-    return ok(enrich(transfers[idx]));
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: TABLE, Key: { transferId },
+      UpdateExpression: 'SET #s = :s, approvedBy = :a',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: { ':s': 'completed', ':a': body.approvedBy || 'unknown' },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return ok(Attributes);
   }
 
   return badReq('Method not supported');

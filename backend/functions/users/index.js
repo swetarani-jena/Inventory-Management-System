@@ -1,45 +1,44 @@
-const { users }            = require('/opt/nodejs/mockData');
+const { db } = require('../../lib/db');
 const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
+const { ScanCommand, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+const TABLE = process.env.USERS_TABLE;
 
 exports.handler = async (event) => {
   const method = event.httpMethod;
   const userId = event.pathParameters?.userId;
 
-  // GET /users
   if (method === 'GET' && !userId) {
-    return ok(users);
+    const { Items } = await db.send(new ScanCommand({ TableName: TABLE }));
+    return ok(Items);
   }
 
-  // GET /users/{userId}
   if (method === 'GET' && userId) {
-    const user = users.find(u => u.userId === userId);
-    return user ? ok(user) : notFound('User not found');
+    const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { userId } }));
+    return Item ? ok(Item) : notFound('User not found');
   }
 
-  // POST /users
   if (method === 'POST') {
     const body = JSON.parse(event.body || '{}');
-    const { username, email, role, warehouseId, phone } = body;
-    if (!username || !email || !role) return badReq('username, email, role are required');
-
-    const newUser = {
-      userId:      `U${String(users.length + 1).padStart(3, '0')}`,
-      username, email, role,
-      warehouseId: warehouseId || null,
-      phone:       phone || '',
-      status:      'active',
-    };
-    users.push(newUser);
-    return created(newUser);
+    if (!body.username || !body.email || !body.role) return badReq('username, email, role are required');
+    const user = { userId: `U${Date.now()}`, status: 'active', ...body };
+    await db.send(new PutCommand({ TableName: TABLE, Item: user }));
+    return created(user);
   }
 
-  // PUT /users/{userId}
   if (method === 'PUT' && userId) {
-    const idx = users.findIndex(u => u.userId === userId);
-    if (idx === -1) return notFound('User not found');
     const body = JSON.parse(event.body || '{}');
-    users[idx] = { ...users[idx], ...body, userId };
-    return ok(users[idx]);
+    const updates = Object.entries(body);
+    if (!updates.length) return badReq('No fields to update');
+    const expr   = 'SET ' + updates.map(([k], i) => `#k${i} = :v${i}`).join(', ');
+    const names  = Object.fromEntries(updates.map(([k], i) => [`#k${i}`, k]));
+    const values = Object.fromEntries(updates.map(([k, v], i) => [`:v${i}`, v]));
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: TABLE, Key: { userId },
+      UpdateExpression: expr, ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values, ReturnValues: 'ALL_NEW',
+    }));
+    return ok(Attributes);
   }
 
   return badReq('Method not supported');

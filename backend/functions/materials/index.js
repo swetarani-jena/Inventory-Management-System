@@ -1,51 +1,43 @@
-const { materials }        = require('/opt/nodejs/mockData');
+const { db } = require('../../lib/db');
 const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
+const { ScanCommand, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+const TABLE = process.env.MATERIALS_TABLE;
 
 exports.handler = async (event) => {
   const method     = event.httpMethod;
   const materialId = event.pathParameters?.materialId;
-  const { category } = event.queryStringParameters || {};
 
-  // GET /materials  (optional ?category=Aggregate)
   if (method === 'GET' && !materialId) {
-    const result = category
-      ? materials.filter(m => m.category.toLowerCase() === category.toLowerCase())
-      : materials;
-    return ok(result);
+    const { Items } = await db.send(new ScanCommand({ TableName: TABLE }));
+    return ok(Items);
   }
 
-  // GET /materials/{materialId}
   if (method === 'GET' && materialId) {
-    const mat = materials.find(m => m.materialId === materialId);
-    return mat ? ok(mat) : notFound('Material not found');
+    const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { materialId } }));
+    return Item ? ok(Item) : notFound('Material not found');
   }
 
-  // POST /materials
   if (method === 'POST') {
     const body = JSON.parse(event.body || '{}');
-    const { name, category: cat, unit, reorderLevel, reorderQty, specifications } = body;
-    if (!name || !cat || !unit) return badReq('name, category, unit are required');
-
-    const newMat = {
-      materialId:     `M${String(materials.length + 1).padStart(3, '0')}`,
-      name,
-      category:       cat,
-      unit,
-      reorderLevel:   reorderLevel || 0,
-      reorderQty:     reorderQty   || 0,
-      specifications: specifications || '',
-    };
-    materials.push(newMat);
-    return created(newMat);
+    if (!body.name || !body.unit) return badReq('name, unit are required');
+    const material = { materialId: `M${Date.now()}`, ...body };
+    await db.send(new PutCommand({ TableName: TABLE, Item: material }));
+    return created(material);
   }
 
-  // PUT /materials/{materialId}
   if (method === 'PUT' && materialId) {
-    const idx = materials.findIndex(m => m.materialId === materialId);
-    if (idx === -1) return notFound('Material not found');
     const body = JSON.parse(event.body || '{}');
-    materials[idx] = { ...materials[idx], ...body, materialId };
-    return ok(materials[idx]);
+    const updates = Object.entries(body);
+    const expr   = 'SET ' + updates.map(([k], i) => `#k${i} = :v${i}`).join(', ');
+    const names  = Object.fromEntries(updates.map(([k], i) => [`#k${i}`, k]));
+    const values = Object.fromEntries(updates.map(([k, v], i) => [`:v${i}`, v]));
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: TABLE, Key: { materialId },
+      UpdateExpression: expr, ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values, ReturnValues: 'ALL_NEW',
+    }));
+    return ok(Attributes);
   }
 
   return badReq('Method not supported');

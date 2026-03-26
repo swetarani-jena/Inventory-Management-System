@@ -1,50 +1,43 @@
-const { vendors }          = require('/opt/nodejs/mockData');
+const { db } = require('../../lib/db');
 const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
+const { ScanCommand, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+const TABLE = process.env.VENDORS_TABLE;
 
 exports.handler = async (event) => {
   const method   = event.httpMethod;
   const vendorId = event.pathParameters?.vendorId;
-  const { status } = event.queryStringParameters || {};
 
-  // GET /vendors
   if (method === 'GET' && !vendorId) {
-    const result = status ? vendors.filter(v => v.status === status) : vendors;
-    return ok(result);
+    const { Items } = await db.send(new ScanCommand({ TableName: TABLE }));
+    return ok(Items);
   }
 
-  // GET /vendors/{vendorId}
   if (method === 'GET' && vendorId) {
-    const vendor = vendors.find(v => v.vendorId === vendorId);
-    return vendor ? ok(vendor) : notFound('Vendor not found');
+    const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { vendorId } }));
+    return Item ? ok(Item) : notFound('Vendor not found');
   }
 
-  // POST /vendors
   if (method === 'POST') {
     const body = JSON.parse(event.body || '{}');
-    const { name, contactPerson, email, phone, address } = body;
-    if (!name || !email) return badReq('name and email are required');
-
-    const newVendor = {
-      vendorId:      `V${String(vendors.length + 1).padStart(3, '0')}`,
-      name,
-      contactPerson: contactPerson || '',
-      email,
-      phone:         phone   || '',
-      address:       address || '',
-      rating:        0,
-      status:        'active',
-    };
-    vendors.push(newVendor);
-    return created(newVendor);
+    if (!body.name || !body.contactPerson) return badReq('name, contactPerson are required');
+    const vendor = { vendorId: `V${Date.now()}`, status: 'active', rating: 0, ...body };
+    await db.send(new PutCommand({ TableName: TABLE, Item: vendor }));
+    return created(vendor);
   }
 
-  // PUT /vendors/{vendorId}
   if (method === 'PUT' && vendorId) {
-    const idx = vendors.findIndex(v => v.vendorId === vendorId);
-    if (idx === -1) return notFound('Vendor not found');
     const body = JSON.parse(event.body || '{}');
-    vendors[idx] = { ...vendors[idx], ...body, vendorId };
-    return ok(vendors[idx]);
+    const updates = Object.entries(body);
+    const expr   = 'SET ' + updates.map(([k], i) => `#k${i} = :v${i}`).join(', ');
+    const names  = Object.fromEntries(updates.map(([k], i) => [`#k${i}`, k]));
+    const values = Object.fromEntries(updates.map(([k, v], i) => [`:v${i}`, v]));
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: TABLE, Key: { vendorId },
+      UpdateExpression: expr, ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values, ReturnValues: 'ALL_NEW',
+    }));
+    return ok(Attributes);
   }
 
   return badReq('Method not supported');

@@ -5,6 +5,162 @@ provider:
   runtime: nodejs18.x
   region: ap-south-1
   stage: ${opt:stage, 'dev'}
+  environment:
+    STAGE: ${opt:stage, 'dev'}
+    USERS_TABLE:          inventory-users-${opt:stage, 'dev'}
+    WAREHOUSES_TABLE:     inventory-warehouses-${opt:stage, 'dev'}
+    MATERIALS_TABLE:      inventory-materials-${opt:stage, 'dev'}
+    INVENTORY_TABLE:      inventory-stock-${opt:stage, 'dev'}
+    TRANSACTIONS_TABLE:   inventory-transactions-${opt:stage, 'dev'}
+    REQUISITIONS_TABLE:   inventory-requisitions-${opt:stage, 'dev'}
+    VENDORS_TABLE:        inventory-vendors-${opt:stage, 'dev'}
+    PURCHASE_ORDERS_TABLE: inventory-purchase-orders-${opt:stage, 'dev'}
+    TRANSFERS_TABLE:      inventory-transfers-${opt:stage, 'dev'}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Scan
+            - dynamodb:Query
+          Resource:
+            - arn:aws:dynamodb:ap-south-1:*:table/inventory-*
+            - arn:aws:dynamodb:ap-south-1:*:table/inventory-*/index/*
+
+package:
+  patterns:
+    - '!layers/**'
+    - '!.serverless/**'
+    - '!.gitignore'
+    - '!README.md'
+
+resources:
+  Resources:
+
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-users-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+
+    WarehousesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-warehouses-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: warehouseId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: warehouseId
+            KeyType: HASH
+
+    MaterialsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-materials-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: materialId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: materialId
+            KeyType: HASH
+
+    InventoryTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-stock-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: warehouseId
+            AttributeType: S
+          - AttributeName: materialId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: warehouseId
+            KeyType: HASH
+          - AttributeName: materialId
+            KeyType: RANGE
+
+    TransactionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-transactions-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: txnId
+            AttributeType: S
+          - AttributeName: warehouseId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: txnId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: warehouseId-index
+            KeySchema:
+              - AttributeName: warehouseId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    RequisitionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-requisitions-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: requisitionId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: requisitionId
+            KeyType: HASH
+
+    VendorsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-vendors-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: vendorId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: vendorId
+            KeyType: HASH
+
+    PurchaseOrdersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-purchase-orders-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: poId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: poId
+            KeyType: HASH
+
+    TransfersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: inventory-transfers-${opt:stage, 'dev'}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: transferId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: transferId
+            KeyType: HASH
 
 layers:
   mockData:

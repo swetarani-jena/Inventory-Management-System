@@ -1,90 +1,148 @@
-const { purchaseOrders, vendors, materials, requisitions } = require('/opt/nodejs/mockData');
+const { db } = require('../../lib/db');
 const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
+const { ScanCommand, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
-const enrich = (po) => ({
-  ...po,
-  vendorName: vendors.find(v => v.vendorId === po.vendorId)?.name,
-  items: po.items.map(item => ({
-    ...item,
-    materialName: materials.find(m => m.materialId === item.materialId)?.name,
-  })),
-});
+const PO_TABLE  = process.env.PURCHASE_ORDERS_TABLE;
+const VEN_TABLE = process.env.VENDORS_TABLE;
+const MAT_TABLE = process.env.MATERIALS_TABLE;
+const REQ_TABLE = process.env.REQUISITIONS_TABLE;
+
+const enrich = async (po) => {
+  const [venRes, matResults] = await Promise.all([
+    db.send(new GetCommand({ TableName: VEN_TABLE, Key: { vendorId: po.vendorId } })),
+    Promise.all(
+      (po.items || []).map(item =>
+        db.send(new GetCommand({ TableName: MAT_TABLE, Key: { materialId: item.materialId } }))
+      )
+    ),
+  ]);
+  return {
+    ...po,
+    vendorName: venRes.Item?.name,
+    items: (po.items || []).map((item, i) => ({
+      ...item,
+      materialName: matResults[i].Item?.name,
+    })),
+  };
+};
 
 exports.handler = async (event) => {
-  const method = event.httpMethod;
-  const poId   = event.pathParameters?.poId;
-  const action = event.pathParameters?.action;   // send | deliver
-  const qs     = event.queryStringParameters || {};
+  const method  = event.httpMethod;
+  const poId    = event.pathParameters?.poId;
+  const action  = event.pathParameters?.action;  // send | deliver
+  const qs      = event.queryStringParameters || {};
 
   // GET /purchase-orders  (?status=sent &vendorId=V001)
   if (method === 'GET' && !poId) {
-    let result = [...purchaseOrders];
-    if (qs.status)   result = result.filter(p => p.status   === qs.status);
-    if (qs.vendorId) result = result.filter(p => p.vendorId === qs.vendorId);
-    return ok(result.map(enrich));
+    const params = { TableName: PO_TABLE };
+    const filters  = [];
+    const names    = {};
+    const values   = {};
+
+    if (qs.status) {
+      filters.push('#s = :status');
+      names['#s']       = 'status';
+      values[':status'] = qs.status;
+    }
+    if (qs.vendorId) {
+      filters.push('vendorId = :vendorId');
+      values[':vendorId'] = qs.vendorId;
+    }
+    if (filters.length) {
+      params.FilterExpression = filters.join(' AND ');
+      if (Object.keys(names).length)  params.ExpressionAttributeNames  = names;
+      if (Object.keys(values).length) params.ExpressionAttributeValues = values;
+    }
+
+    const { Items } = await db.send(new ScanCommand(params));
+    const enriched  = await Promise.all(Items.map(enrich));
+    return ok(enriched);
   }
 
   // GET /purchase-orders/{poId}
   if (method === 'GET' && poId && !action) {
-    const po = purchaseOrders.find(p => p.poId === poId);
-    return po ? ok(enrich(po)) : notFound('Purchase Order not found');
+    const { Item } = await db.send(new GetCommand({ TableName: PO_TABLE, Key: { poId } }));
+    return Item ? ok(await enrich(Item)) : notFound('Purchase Order not found');
   }
 
-  // POST /purchase-orders — create PO
+  // POST /purchase-orders
   if (method === 'POST') {
     const body = JSON.parse(event.body || '{}');
     const { vendorId, requisitionId, expectedDeliveryDate, items, createdBy } = body;
     if (!vendorId || !items?.length) return badReq('vendorId and items are required');
 
-    if (!vendors.find(v => v.vendorId === vendorId)) return notFound('Vendor not found');
+    // Validate vendor exists
+    const { Item: vendor } = await db.send(new GetCommand({ TableName: VEN_TABLE, Key: { vendorId } }));
+    if (!vendor) return notFound('Vendor not found');
 
     const poItems = items.map((item, i) => ({
       itemId:     `PI${String(Date.now() + i).slice(-4)}`,
       materialId: item.materialId,
       quantity:   item.quantity,
       unitPrice:  item.unitPrice  || 0,
-      totalPrice: (item.quantity || 0) * (item.unitPrice || 0),
+      totalPrice: (item.quantity  || 0) * (item.unitPrice || 0),
     }));
 
     const newPO = {
-      poId:                 `PO${String(purchaseOrders.length + 1).padStart(3, '0')}`,
-      poNumber:             `PO-2025-${String(purchaseOrders.length + 1).padStart(3, '0')}`,
+      poId:                 `PO${Date.now()}`,
+      poNumber:             `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
       date:                 new Date().toISOString().split('T')[0],
       vendorId,
       requisitionId:        requisitionId || null,
       totalAmount:          poItems.reduce((s, i) => s + i.totalPrice, 0),
       status:               'generated',
-      createdBy:            createdBy || 'U003',
+      createdBy:            createdBy || 'unknown',
       expectedDeliveryDate: expectedDeliveryDate || null,
       actualDeliveryDate:   null,
       items:                poItems,
     };
-    purchaseOrders.push(newPO);
 
-    // Mark linked requisition as PO raised
+    await db.send(new PutCommand({ TableName: PO_TABLE, Item: newPO }));
+
+    // Mark linked requisition as po_raised
     if (requisitionId) {
-      const rIdx = requisitions.findIndex(r => r.requisitionId === requisitionId);
-      if (rIdx !== -1) requisitions[rIdx].status = 'po_raised';
+      await db.send(new UpdateCommand({
+        TableName: REQ_TABLE,
+        Key: { requisitionId },
+        UpdateExpression: 'SET #s = :s',
+        ExpressionAttributeNames:  { '#s': 'status' },
+        ExpressionAttributeValues: { ':s': 'po_raised' },
+      }));
     }
 
-    return created(enrich(newPO));
+    return created(await enrich(newPO));
   }
 
   // PUT /purchase-orders/{poId}/send
-  if (method === 'PUT' && action === 'send') {
-    const idx = purchaseOrders.findIndex(p => p.poId === poId);
-    if (idx === -1) return notFound('Purchase Order not found');
-    purchaseOrders[idx].status = 'sent';
-    return ok(enrich(purchaseOrders[idx]));
+  if (method === 'PUT' && poId && action === 'send') {
+    const { Item } = await db.send(new GetCommand({ TableName: PO_TABLE, Key: { poId } }));
+    if (!Item) return notFound('Purchase Order not found');
+
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: PO_TABLE,
+      Key: { poId },
+      UpdateExpression: 'SET #s = :s',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: { ':s': 'sent' },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return ok(await enrich(Attributes));
   }
 
   // PUT /purchase-orders/{poId}/deliver
-  if (method === 'PUT' && action === 'deliver') {
-    const idx = purchaseOrders.findIndex(p => p.poId === poId);
-    if (idx === -1) return notFound('Purchase Order not found');
-    purchaseOrders[idx].status             = 'delivered';
-    purchaseOrders[idx].actualDeliveryDate = new Date().toISOString().split('T')[0];
-    return ok(enrich(purchaseOrders[idx]));
+  if (method === 'PUT' && poId && action === 'deliver') {
+    const { Item } = await db.send(new GetCommand({ TableName: PO_TABLE, Key: { poId } }));
+    if (!Item) return notFound('Purchase Order not found');
+
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: PO_TABLE,
+      Key: { poId },
+      UpdateExpression: 'SET #s = :s, actualDeliveryDate = :d',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: { ':s': 'delivered', ':d': new Date().toISOString().split('T')[0] },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return ok(await enrich(Attributes));
   }
 
   return badReq('Method not supported');

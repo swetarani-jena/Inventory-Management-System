@@ -1,46 +1,43 @@
-const { warehouses }       = require('/opt/nodejs/mockData');
+const { db } = require('../../lib/db');
 const { ok, created, badReq, notFound } = require('/opt/nodejs/response');
+const { ScanCommand, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+const TABLE = process.env.WAREHOUSES_TABLE;
 
 exports.handler = async (event) => {
   const method      = event.httpMethod;
   const warehouseId = event.pathParameters?.warehouseId;
 
-  // GET /warehouses
   if (method === 'GET' && !warehouseId) {
-    return ok(warehouses.filter(w => w.status === 'active'));
+    const { Items } = await db.send(new ScanCommand({ TableName: TABLE }));
+    return ok(Items);
   }
 
-  // GET /warehouses/{warehouseId}
   if (method === 'GET' && warehouseId) {
-    const wh = warehouses.find(w => w.warehouseId === warehouseId);
-    return wh ? ok(wh) : notFound('Warehouse not found');
+    const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { warehouseId } }));
+    return Item ? ok(Item) : notFound('Warehouse not found');
   }
 
-  // POST /warehouses
   if (method === 'POST') {
     const body = JSON.parse(event.body || '{}');
-    const { name, location, address, capacity, managerId } = body;
-    if (!name || !location) return badReq('name and location are required');
-
-    const newWh = {
-      warehouseId: `W${String(warehouses.length + 1).padStart(3, '0')}`,
-      name, location,
-      address:   address || '',
-      capacity:  capacity || 0,
-      managerId: managerId || null,
-      status:    'active',
-    };
-    warehouses.push(newWh);
-    return created(newWh);
+    if (!body.name || !body.location) return badReq('name, location are required');
+    const warehouse = { warehouseId: `W${Date.now()}`, status: 'active', ...body };
+    await db.send(new PutCommand({ TableName: TABLE, Item: warehouse }));
+    return created(warehouse);
   }
 
-  // PUT /warehouses/{warehouseId}
   if (method === 'PUT' && warehouseId) {
-    const idx = warehouses.findIndex(w => w.warehouseId === warehouseId);
-    if (idx === -1) return notFound('Warehouse not found');
     const body = JSON.parse(event.body || '{}');
-    warehouses[idx] = { ...warehouses[idx], ...body, warehouseId };
-    return ok(warehouses[idx]);
+    const updates = Object.entries(body);
+    const expr   = 'SET ' + updates.map(([k], i) => `#k${i} = :v${i}`).join(', ');
+    const names  = Object.fromEntries(updates.map(([k], i) => [`#k${i}`, k]));
+    const values = Object.fromEntries(updates.map(([k, v], i) => [`:v${i}`, v]));
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: TABLE, Key: { warehouseId },
+      UpdateExpression: expr, ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values, ReturnValues: 'ALL_NEW',
+    }));
+    return ok(Attributes);
   }
 
   return badReq('Method not supported');
