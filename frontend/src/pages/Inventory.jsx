@@ -8,6 +8,8 @@ import { Add } from '@mui/icons-material';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../services/api';
 import { PageHeader, StatusChip } from '../components/PageHeader';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../services/permissions';
 
 const GRN_MIN_Form = ({ open, onClose, onSubmit, type, warehouses, materials }) => {
   const [form, setForm] = useState({ warehouseId: '', materialId: '', quantity: '', referenceNo: '', remarks: '' });
@@ -44,6 +46,7 @@ const GRN_MIN_Form = ({ open, onClose, onSubmit, type, warehouses, materials }) 
 };
 
 export default function Inventory() {
+  const { auth } = useAuth();
   const [tab,     setTab]     = useState(0);
   const [dialog,  setDialog]  = useState(null); // 'grn' | 'min' | null
   const [msg,     setMsg]     = useState(null);
@@ -70,8 +73,8 @@ export default function Inventory() {
         subtitle="Real-time stock levels across all warehouses"
         action={
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button variant="outlined" color="success" startIcon={<Add />} onClick={() => setDialog('grn')}>GRN</Button>
-            <Button variant="outlined" color="warning" startIcon={<Add />} onClick={() => setDialog('min')}>MIN</Button>
+            {can(auth?.role, 'canRecordGRN') && <Button variant="outlined" color="success" startIcon={<Add />} onClick={() => setDialog('grn')}>GRN</Button>}
+            {can(auth?.role, 'canRecordMIN') && <Button variant="outlined" color="warning" startIcon={<Add />} onClick={() => setDialog('min')}>MIN</Button>}
           </Box>
         }
       />

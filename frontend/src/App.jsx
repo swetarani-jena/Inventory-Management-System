@@ -1,162 +1,221 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import {
-  Box, Drawer, AppBar, Toolbar, Typography, List, ListItemButton,
-  ListItemIcon, ListItemText, CssBaseline, IconButton, Divider,
-  Avatar, Chip, useMediaQuery, createTheme, ThemeProvider
+  Box, Drawer, List, ListItem, ListItemButton, ListItemIcon,
+  ListItemText, Toolbar, AppBar, Typography, IconButton,
+  Avatar, Menu, MenuItem, Chip, Divider, ListSubheader
 } from '@mui/material';
 import {
-  Dashboard, Inventory2, Assignment, ShoppingCart, SwapHoriz,
-  Warehouse, Category, People, BarChart, Menu, Construction
+  Dashboard, Inventory2, Assignment, ShoppingCart,
+  SwapHoriz, Analytics, Warehouse, Category,
+  People, Logout, BarChart
 } from '@mui/icons-material';
-
-import DashboardPage    from './pages/Dashboard';
-import InventoryPage    from './pages/Inventory';
-import RequisitionsPage from './pages/Requisitions';
-import PurchaseOrders   from './pages/PurchaseOrders';
-import Transfers        from './pages/Transfers';
-import Analytics        from './pages/Analytics';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login from './pages/Login';
+import DashboardPage      from './pages/Dashboard';
+import InventoryPage      from './pages/Inventory';
+import RequisitionsPage   from './pages/Requisitions';
+import PurchaseOrdersPage from './pages/PurchaseOrders';
+import TransfersPage      from './pages/Transfers';
+import AnalyticsPage      from './pages/Analytics';
 import { Warehouses, Materials, Vendors } from './pages/MasterData';
 
-const DRAWER_WIDTH = 240;
+const DRAWER_WIDTH = 252;
 
-const theme = createTheme({
-  palette: {
-    primary:   { main: '#1565C0' },
-    secondary: { main: '#FF6F00' },
-    background:{ default: '#F4F6F9' },
-  },
-  typography: {
-    fontFamily: '"DM Sans", "Roboto", sans-serif',
-  },
-  shape: { borderRadius: 8 },
-  components: {
-    MuiCard:    { styleOverrides: { root: { borderRadius: 12 } } },
-    MuiButton:  { styleOverrides: { root: { textTransform: 'none', fontWeight: 600, borderRadius: 8 } } },
-    MuiTableCell:{ styleOverrides: { head: { fontWeight: 700, fontSize: '0.78rem' } } },
-  },
-});
-
-const NAV = [
-  { label: 'Dashboard',       icon: <Dashboard />,    path: '/'               },
-  { label: 'Inventory',       icon: <Inventory2 />,   path: '/inventory'      },
-  { label: 'Requisitions',    icon: <Assignment />,   path: '/requisitions'   },
-  { label: 'Purchase Orders', icon: <ShoppingCart />, path: '/purchase-orders'},
-  { label: 'Transfers',       icon: <SwapHoriz />,    path: '/transfers'      },
-  { divider: true },
-  { label: 'Warehouses',      icon: <Warehouse />,    path: '/warehouses'     },
-  { label: 'Materials',       icon: <Category />,     path: '/materials'      },
-  { label: 'Vendors',         icon: <People />,       path: '/vendors'        },
-  { divider: true },
-  { label: 'Analytics',       icon: <BarChart />,     path: '/analytics'      },
+const NAV_MAIN = [
+  { label: 'Dashboard',       icon: <Dashboard />,    page: 'dashboard'       },
+  { label: 'Inventory',       icon: <Inventory2 />,   page: 'inventory'       },
+  { label: 'Requisitions',    icon: <Assignment />,   page: 'requisitions'    },
+  { label: 'Purchase Orders', icon: <ShoppingCart />, page: 'purchase-orders' },
+  { label: 'Transfers',       icon: <SwapHoriz />,    page: 'transfers'       },
+  { label: 'Analytics',       icon: <BarChart />,     page: 'analytics'       },
 ];
 
-function SidebarContent({ onClose }) {
-  const location = useLocation();
-  return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Logo */}
-      <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Box sx={{ bgcolor: 'primary.main', borderRadius: 2, p: 0.8, display: 'flex' }}>
-          <Construction sx={{ color: '#fff', fontSize: 22 }} />
-        </Box>
-        <Box>
-          <Typography variant="subtitle1" fontWeight={800} color="primary.main" lineHeight={1.1}>InvTrack</Typography>
-          <Typography variant="caption" color="text.secondary">Construction Materials</Typography>
-        </Box>
-      </Box>
-      <Divider />
+const NAV_MASTER = [
+  { label: 'Warehouses', icon: <Warehouse />, page: 'warehouses' },
+  { label: 'Materials',  icon: <Category />,  page: 'materials'  },
+  { label: 'Vendors',    icon: <People />,    page: 'vendors'    },
+];
 
-      <List sx={{ flex: 1, px: 1, py: 1.5 }}>
-        {NAV.map((item, i) => {
-          if (item.divider) return <Divider key={`d${i}`} sx={{ my: 1 }} />;
-          const active = location.pathname === item.path;
-          return (
-            <ListItemButton
-              key={item.path}
-              component={NavLink}
-              to={item.path}
-              onClick={onClose}
-              sx={{
-                borderRadius: 2, mb: 0.5,
-                bgcolor:     active ? 'primary.main' : 'transparent',
-                color:       active ? '#fff' : 'text.secondary',
-                '&:hover':   { bgcolor: active ? 'primary.dark' : 'action.hover' },
-                '& .MuiListItemIcon-root': { color: active ? '#fff' : 'text.secondary', minWidth: 36 },
-              }}
-            >
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: '0.88rem', fontWeight: active ? 700 : 500 }} />
-            </ListItemButton>
-          );
-        })}
-      </List>
+const ROLE_COLORS = {
+  admin:               'error',
+  warehouse_manager:   'primary',
+  procurement_officer: 'warning',
+  site_engineer:       'success',
+};
 
-      <Divider />
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Avatar sx={{ width: 32, height: 32, bgcolor: 'secondary.main', fontSize: '0.8rem' }}>SJ</Avatar>
-        <Box>
-          <Typography variant="body2" fontWeight={700}>Swetarani Jena</Typography>
-          <Typography variant="caption" color="text.secondary">Site Engineer</Typography>
-        </Box>
-      </Box>
-    </Box>
+const ROLE_LABELS = {
+  admin:               'Admin',
+  warehouse_manager:   'Warehouse Manager',
+  procurement_officer: 'Procurement Officer',
+  site_engineer:       'Site Engineer',
+};
+
+function AppShell() {
+  const { auth, logout } = useAuth();
+  const [page,     setPage]     = useState('dashboard');
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [loggedIn, setLoggedIn] = useState(!!auth);
+
+  if (!loggedIn || !auth) {
+    return <Login onLogin={() => setLoggedIn(true)} />;
+  }
+
+  const renderPage = () => {
+    switch (page) {
+      case 'dashboard':       return <DashboardPage />;
+      case 'inventory':       return <InventoryPage />;
+      case 'requisitions':    return <RequisitionsPage />;
+      case 'purchase-orders': return <PurchaseOrdersPage />;
+      case 'transfers':       return <TransfersPage />;
+      case 'analytics':       return <AnalyticsPage />;
+      case 'warehouses':      return <Warehouses />;
+      case 'materials':       return <Materials />;
+      case 'vendors':         return <Vendors />;
+      default:                return <DashboardPage />;
+    }
+  };
+
+  const NavItem = ({ item }) => (
+    <ListItem disablePadding sx={{ px: 1, mb: 0.5 }}>
+      <ListItemButton
+        selected={page === item.page}
+        onClick={() => setPage(item.page)}
+        sx={{
+          borderRadius: 2,
+          py: 1,
+          '&.Mui-selected': {
+            bgcolor: 'primary.main',
+            color: 'white',
+            '& .MuiListItemIcon-root': { color: 'white' },
+            '&:hover': { bgcolor: 'primary.dark' },
+          },
+          '&:hover:not(.Mui-selected)': { bgcolor: 'grey.100' },
+        }}
+      >
+        <ListItemIcon sx={{ minWidth: 36, color: page === item.page ? 'white' : 'grey.600' }}>
+          {item.icon}
+        </ListItemIcon>
+        <ListItemText
+          primary={item.label}
+          primaryTypographyProps={{ fontSize: 14, fontWeight: page === item.page ? 600 : 400 }}
+        />
+      </ListItemButton>
+    </ListItem>
   );
-}
-
-function Layout() {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const location = useLocation();
-  const currentPage = NAV.find(n => n.path === location.pathname)?.label || 'Dashboard';
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-      <CssBaseline />
+    <Box sx={{ display: 'flex', bgcolor: '#f8f9fb', minHeight: '100vh' }}>
 
-      {/* Top AppBar */}
-      <AppBar position="fixed" elevation={0} sx={{ zIndex: t => t.zIndex.drawer + 1, bgcolor: '#fff', borderBottom: '1px solid', borderColor: 'divider', width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, ml: { md: `${DRAWER_WIDTH}px` } }}>
-        <Toolbar>
-          {isMobile && <IconButton onClick={() => setMobileOpen(o => !o)} sx={{ mr: 1, color: 'text.primary' }}><Menu /></IconButton>}
-          <Typography variant="h6" fontWeight={700} color="text.primary" sx={{ flex: 1 }}>{currentPage}</Typography>
-          <Chip label="Mock Data Mode" size="small" color="warning" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+      {/* AppBar */}
+      <AppBar position="fixed" elevation={0} sx={{
+        zIndex: t => t.zIndex.drawer + 1,
+        bgcolor: 'white',
+        borderBottom: '1px solid',
+        borderColor: 'grey.200',
+        color: 'text.primary',
+      }}>
+        <Toolbar sx={{ gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1 }}>
+            <Box sx={{
+              width: 32, height: 32, borderRadius: 1.5,
+              bgcolor: 'primary.main', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Inventory2 sx={{ color: 'white', fontSize: 18 }} />
+            </Box>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>
+                Inventory Management
+              </Typography>
+              <Typography variant="caption" color="text.secondary" lineHeight={1}>
+                Construction Materials System
+              </Typography>
+            </Box>
+          </Box>
+
+          <Chip
+            label={ROLE_LABELS[auth.role] || auth.role}
+            color={ROLE_COLORS[auth.role] || 'default'}
+            size="small"
+            sx={{ fontWeight: 600, fontSize: 11 }}
+          />
+
+          <IconButton onClick={e => setAnchorEl(e.currentTarget)} size="small">
+            <Avatar sx={{
+              width: 34, height: 34,
+              bgcolor: 'primary.main',
+              fontSize: 14, fontWeight: 700,
+            }}>
+              {auth.email?.[0]?.toUpperCase()}
+            </Avatar>
+          </IconButton>
+
+          <Menu anchorEl={anchorEl} open={!!anchorEl} onClose={() => setAnchorEl(null)}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            PaperProps={{ elevation: 2, sx: { borderRadius: 2, minWidth: 200, mt: 0.5 } }}
+          >
+            <Box sx={{ px: 2, py: 1.5 }}>
+              <Typography variant="body2" fontWeight={600}>{auth.email}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {ROLE_LABELS[auth.role]}
+              </Typography>
+            </Box>
+            <Divider />
+            <MenuItem onClick={() => { logout(); setLoggedIn(false); setAnchorEl(null); }}
+              sx={{ gap: 1.5, color: 'error.main', py: 1.5 }}>
+              <Logout fontSize="small" /> Logout
+            </MenuItem>
+          </Menu>
         </Toolbar>
       </AppBar>
 
-      {/* Sidebar — desktop */}
-      <Drawer variant="permanent" sx={{ display: { xs: 'none', md: 'block' }, width: DRAWER_WIDTH, '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box', borderRight: '1px solid', borderColor: 'divider' } }}>
-        <SidebarContent onClose={() => {}} />
-      </Drawer>
+      {/* Drawer */}
+      <Drawer variant="permanent" sx={{
+        width: DRAWER_WIDTH,
+        '& .MuiDrawer-paper': {
+          width: DRAWER_WIDTH,
+          boxSizing: 'border-box',
+          bgcolor: 'white',
+          borderRight: '1px solid',
+          borderColor: 'grey.200',
+        },
+      }}>
+        <Toolbar />
+        <Box sx={{ pt: 2, pb: 1 }}>
 
-      {/* Sidebar — mobile */}
-      <Drawer variant="temporary" open={mobileOpen} onClose={() => setMobileOpen(false)} sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: DRAWER_WIDTH } }}>
-        <SidebarContent onClose={() => setMobileOpen(false)} />
+          {/* Main navigation */}
+          <List dense disablePadding>
+            {NAV_MAIN.map(item => <NavItem key={item.page} item={item} />)}
+          </List>
+
+          {/* Master Data section */}
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="caption" fontWeight={700} color="text.disabled"
+              sx={{ px: 2, letterSpacing: 1, textTransform: 'uppercase', display: 'block', mb: 0.5 }}>
+              Master Data
+            </Typography>
+            <List dense disablePadding>
+              {NAV_MASTER.map(item => <NavItem key={item.page} item={item} />)}
+            </List>
+          </Box>
+
+        </Box>
       </Drawer>
 
       {/* Main content */}
-      <Box component="main" sx={{ flex: 1, p: 3, mt: '64px', bgcolor: 'background.default', minHeight: 'calc(100vh - 64px)' }}>
-        <Routes>
-          <Route path="/"                element={<DashboardPage />}    />
-          <Route path="/inventory"       element={<InventoryPage />}    />
-          <Route path="/requisitions"    element={<RequisitionsPage />} />
-          <Route path="/purchase-orders" element={<PurchaseOrders />}   />
-          <Route path="/transfers"       element={<Transfers />}        />
-          <Route path="/warehouses"      element={<Warehouses />}       />
-          <Route path="/materials"       element={<Materials />}        />
-          <Route path="/vendors"         element={<Vendors />}          />
-          <Route path="/analytics"       element={<Analytics />}        />
-        </Routes>
+      <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8, maxWidth: 'calc(100vw - 252px)' }}>
+        {renderPage()}
       </Box>
+
     </Box>
   );
 }
 
 export default function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <Layout />
-      </BrowserRouter>
-    </ThemeProvider>
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }

@@ -1,0 +1,53 @@
+// Maps each role to what actions they can perform
+export const PERMISSIONS = {
+  admin: {
+    canApproveRequisition:  true,
+    canRejectRequisition:   true,
+    canApproveTransfer:     true,
+    canCreatePO:            true,
+    canSendPO:              true,
+    canDeliverPO:           true,
+    canRecordGRN:           true,
+    canRecordMIN:           true,
+    canEditMasterData:      true,
+    canCreateUser:          true,
+  },
+  warehouse_manager: {
+    canApproveRequisition:  true,
+    canRejectRequisition:   true,
+    canApproveTransfer:     true,
+    canCreatePO:            false,
+    canSendPO:              false,
+    canDeliverPO:           true,
+    canRecordGRN:           true,
+    canRecordMIN:           true,
+    canEditMasterData:      false,
+    canCreateUser:          false,
+  },
+  procurement_officer: {
+    canApproveRequisition:  false,
+    canRejectRequisition:   false,
+    canApproveTransfer:     false,
+    canCreatePO:            true,
+    canSendPO:              true,
+    canDeliverPO:           false,
+    canRecordGRN:           false,
+    canRecordMIN:           false,
+    canEditMasterData:      false,
+    canCreateUser:          false,
+  },
+  site_engineer: {
+    canApproveRequisition:  false,
+    canRejectRequisition:   false,
+    canApproveTransfer:     false,
+    canCreatePO:            false,
+    canSendPO:              false,
+    canDeliverPO:           false,
+    canRecordGRN:           false,
+    canRecordMIN:           true,
+    canEditMasterData:      false,
+    canCreateUser:          false,
+  },
+};
+
+export const can = (role, action) => !!PERMISSIONS[role]?.[action];

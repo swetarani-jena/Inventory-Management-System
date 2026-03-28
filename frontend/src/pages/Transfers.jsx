@@ -8,6 +8,8 @@ import { Add, CheckCircle, ExpandMore, ExpandLess } from '@mui/icons-material';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../services/api';
 import { PageHeader, StatusChip } from '../components/PageHeader';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../services/permissions';
 
 const CreateDialog = ({ open, onClose, warehouses, materials, onSubmit }) => {
   const [form, setForm] = useState({ fromWarehouse: '', toWarehouse: '', items: [{ materialId: '', quantity: '', unit: '' }] });
@@ -51,7 +53,7 @@ const CreateDialog = ({ open, onClose, warehouses, materials, onSubmit }) => {
 };
 
 // ← FIXED: accept warehouseMap + materialMap as props
-const TRow = ({ t, warehouseMap, materialMap, onApprove }) => {
+const TRow = ({ t, warehouseMap, materialMap, canApprove, onApprove }) => {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -64,7 +66,7 @@ const TRow = ({ t, warehouseMap, materialMap, onApprove }) => {
         <TableCell><StatusChip status={t.status} /></TableCell>
         <TableCell>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {t.status === 'pending' && <IconButton size="small" color="success" onClick={() => onApprove(t.transferId)} title="Approve Transfer"><CheckCircle /></IconButton>}
+            {canApprove && t.status === 'pending' && <IconButton size="small" color="success" onClick={() => onApprove(t.transferId)}><CheckCircle /></IconButton>}
             <IconButton size="small" onClick={() => setOpen(o => !o)}>{open ? <ExpandLess /> : <ExpandMore />}</IconButton>
           </Box>
         </TableCell>
@@ -91,6 +93,7 @@ const TRow = ({ t, warehouseMap, materialMap, onApprove }) => {
 };
 
 export default function Transfers() {
+  const { auth } = useAuth();
   const [dialog, setDialog] = useState(false);
   const [msg,    setMsg]    = useState(null);
 
@@ -132,6 +135,7 @@ export default function Transfers() {
             {transfers?.map(t => (
               <TRow key={t.transferId} t={t}
                 warehouseMap={warehouseMap} materialMap={materialMap}
+                canApprove={can(auth?.role, 'canApproveTransfer')}
                 onApprove={handleApprove} />
             ))}
           </TableBody>

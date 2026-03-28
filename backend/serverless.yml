@@ -162,11 +162,58 @@ resources:
           - AttributeName: transferId
             KeyType: HASH
 
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: inventory-user-pool-${opt:stage, 'dev'}
+        UsernameAttributes:
+          - email
+        AutoVerifiedAttributes:
+          - email
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireUppercase: false
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireSymbols: false
+        Schema:
+          - Name: role
+            AttributeDataType: String
+            Mutable: true
+            Required: false
+          - Name: warehouseId
+            AttributeDataType: String
+            Mutable: true
+            Required: false
+
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: inventory-app-client-${opt:stage, 'dev'}
+        UserPoolId: !Ref CognitoUserPool
+        ExplicitAuthFlows:
+          - ALLOW_USER_SRP_AUTH  
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        GenerateSecret: false
+        AccessTokenValidity: 8
+        RefreshTokenValidity: 30
+        TokenValidityUnits:
+          AccessToken: hours
+          RefreshToken: days
+
+  Outputs:
+    UserPoolId:
+      Value: !Ref CognitoUserPool
+    UserPoolClientId:
+      Value: !Ref CognitoUserPoolClient
+
 layers:
-  mockData:
+  helpers:
     path: layers/mockData
-    name: inventory-mock-data
-    description: Shared mock data and response helpers
+    name: inventory-helpers-${opt:stage, 'dev'}
+    description: Shared response helpers
     compatibleRuntimes:
       - nodejs18.x
 
@@ -176,7 +223,7 @@ functions:
   getUsers:
     handler: functions/users/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /users
@@ -186,7 +233,7 @@ functions:
   getUser:
     handler: functions/users/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /users/{userId}
@@ -196,7 +243,7 @@ functions:
   createUser:
     handler: functions/users/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /users
@@ -206,7 +253,7 @@ functions:
   updateUser:
     handler: functions/users/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /users/{userId}
@@ -217,7 +264,7 @@ functions:
   getWarehouses:
     handler: functions/warehouses/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /warehouses
@@ -227,7 +274,7 @@ functions:
   getWarehouse:
     handler: functions/warehouses/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /warehouses/{warehouseId}
@@ -237,7 +284,7 @@ functions:
   createWarehouse:
     handler: functions/warehouses/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /warehouses
@@ -247,7 +294,7 @@ functions:
   updateWarehouse:
     handler: functions/warehouses/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /warehouses/{warehouseId}
@@ -258,7 +305,7 @@ functions:
   getMaterials:
     handler: functions/materials/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /materials
@@ -268,7 +315,7 @@ functions:
   getMaterial:
     handler: functions/materials/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /materials/{materialId}
@@ -278,7 +325,7 @@ functions:
   createMaterial:
     handler: functions/materials/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /materials
@@ -288,7 +335,7 @@ functions:
   updateMaterial:
     handler: functions/materials/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /materials/{materialId}
@@ -299,7 +346,7 @@ functions:
   getInventory:
     handler: functions/inventory/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /inventory
@@ -309,7 +356,7 @@ functions:
   getLowStock:
     handler: functions/inventory/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /inventory/low-stock
@@ -319,7 +366,7 @@ functions:
   getInventoryItem:
     handler: functions/inventory/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /inventory/{warehouseId}/{materialId}
@@ -329,7 +376,7 @@ functions:
   getTransactions:
     handler: functions/inventory/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /inventory/transactions/{warehouseId}
@@ -339,7 +386,7 @@ functions:
   recordGRN:
     handler: functions/inventory/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /inventory/grn
@@ -349,7 +396,7 @@ functions:
   recordMIN:
     handler: functions/inventory/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /inventory/min
@@ -360,7 +407,7 @@ functions:
   getRequisitions:
     handler: functions/requisitions/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /requisitions
@@ -370,7 +417,7 @@ functions:
   getRequisition:
     handler: functions/requisitions/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /requisitions/{requisitionId}
@@ -380,7 +427,7 @@ functions:
   createRequisition:
     handler: functions/requisitions/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /requisitions
@@ -390,7 +437,7 @@ functions:
   approveRequisition:
     handler: functions/requisitions/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /requisitions/{requisitionId}/approve
@@ -400,7 +447,7 @@ functions:
   rejectRequisition:
     handler: functions/requisitions/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /requisitions/{requisitionId}/reject
@@ -411,7 +458,7 @@ functions:
   getVendors:
     handler: functions/vendors/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /vendors
@@ -421,7 +468,7 @@ functions:
   getVendor:
     handler: functions/vendors/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /vendors/{vendorId}
@@ -431,7 +478,7 @@ functions:
   createVendor:
     handler: functions/vendors/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /vendors
@@ -441,7 +488,7 @@ functions:
   updateVendor:
     handler: functions/vendors/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /vendors/{vendorId}
@@ -452,7 +499,7 @@ functions:
   getPurchaseOrders:
     handler: functions/purchaseOrders/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /purchase-orders
@@ -462,7 +509,7 @@ functions:
   getPurchaseOrder:
     handler: functions/purchaseOrders/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /purchase-orders/{poId}
@@ -472,7 +519,7 @@ functions:
   createPurchaseOrder:
     handler: functions/purchaseOrders/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /purchase-orders
@@ -482,7 +529,7 @@ functions:
   sendPurchaseOrder:
     handler: functions/purchaseOrders/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /purchase-orders/{poId}/send
@@ -492,7 +539,7 @@ functions:
   deliverPurchaseOrder:
     handler: functions/purchaseOrders/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /purchase-orders/{poId}/deliver
@@ -503,7 +550,7 @@ functions:
   getTransfers:
     handler: functions/transfers/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /transfers
@@ -513,7 +560,7 @@ functions:
   getTransfer:
     handler: functions/transfers/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /transfers/{transferId}
@@ -523,7 +570,7 @@ functions:
   createTransfer:
     handler: functions/transfers/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /transfers
@@ -533,7 +580,7 @@ functions:
   approveTransfer:
     handler: functions/transfers/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /transfers/{transferId}/approve
@@ -544,7 +591,7 @@ functions:
   getAnalytics:
     handler: functions/analytics/index.handler
     layers:
-      - !Ref MockDataLambdaLayer
+      - !Ref HelpersLambdaLayer
     events:
       - http:
           path: /analytics/{report}

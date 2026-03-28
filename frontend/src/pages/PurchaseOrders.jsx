@@ -8,6 +8,8 @@ import { Add, Send, LocalShipping, ExpandMore, ExpandLess } from '@mui/icons-mat
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../services/api';
 import { PageHeader, StatusChip } from '../components/PageHeader';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../services/permissions';
 
 const CreateDialog = ({ open, onClose, vendors, materials, onSubmit }) => {
   const [form, setForm] = useState({ vendorId: '', expectedDeliveryDate: '', items: [{ materialId: '', quantity: '', unitPrice: '' }] });
@@ -54,7 +56,7 @@ const CreateDialog = ({ open, onClose, vendors, materials, onSubmit }) => {
   );
 };
 
-const PORow = ({ po, onSend, onDeliver }) => {
+const PORow = ({ po, canSend, canDeliver, onSend, onDeliver }) => {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -67,8 +69,8 @@ const PORow = ({ po, onSend, onDeliver }) => {
         <TableCell><StatusChip status={po.status} /></TableCell>
         <TableCell>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {po.status === 'generated' && <IconButton size="small" color="primary" onClick={() => onSend(po.poId)} title="Send to Vendor"><Send /></IconButton>}
-            {po.status === 'sent' && <IconButton size="small" color="success" onClick={() => onDeliver(po.poId)} title="Mark Delivered"><LocalShipping /></IconButton>}
+            {canSend    && po.status === 'generated' && <IconButton size="small" color="primary"  onClick={() => onSend(po.poId)}    title="Send to Vendor"><Send /></IconButton>}
+            {canDeliver && po.status === 'sent'      && <IconButton size="small" color="success"  onClick={() => onDeliver(po.poId)} title="Mark Delivered"><LocalShipping /></IconButton>}
             <IconButton size="small" onClick={() => setOpen(o => !o)}>{open ? <ExpandLess /> : <ExpandMore />}</IconButton>
           </Box>
         </TableCell>
@@ -94,6 +96,7 @@ const PORow = ({ po, onSend, onDeliver }) => {
 };
 
 export default function PurchaseOrders() {
+  const { auth } = useAuth();
   const [dialog, setDialog] = useState(false);
   const [msg,    setMsg]    = useState(null);
 
@@ -110,7 +113,7 @@ export default function PurchaseOrders() {
   return (
     <Box>
       <PageHeader title="Purchase Orders" subtitle="Manage vendor purchase orders"
-        action={<Button variant="contained" startIcon={<Add />} onClick={() => setDialog(true)}>Create PO</Button>}
+        action={can(auth?.role, 'canCreatePO') && <Button variant="contained" startIcon={<Add />} onClick={() => setDialog(true)}>Create PO</Button>}
       />
       {msg && <Alert severity={msg.type} sx={{ mb: 2 }} onClose={() => setMsg(null)}>{msg.text}</Alert>}
 
@@ -128,7 +131,7 @@ export default function PurchaseOrders() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {pos?.map(po => <PORow key={po.poId} po={po} onSend={handleSend} onDeliver={handleDeliver} />)}
+            {pos?.map(po => <PORow key={po.poId} po={po} canSend={can(auth?.role, 'canSendPO')} canDeliver={can(auth?.role, 'canDeliverPO')} onSend={handleSend} onDeliver={handleDeliver} />)}
           </TableBody>
         </Table>
       </Card>

@@ -8,6 +8,8 @@ import { Add, Edit } from '@mui/icons-material';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../services/api';
 import { PageHeader, StatusChip } from '../components/PageHeader';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../services/permissions';
 
 // ─── Reusable simple form dialog ────────────────────────────
 const SimpleDialog = ({ open, onClose, title, fields, onSubmit, initial = {} }) => {
@@ -35,6 +37,7 @@ const SimpleDialog = ({ open, onClose, title, fields, onSubmit, initial = {} }) 
 
 // ─── WAREHOUSES ──────────────────────────────────────────────
 export function Warehouses() {
+  const { auth } = useAuth();
   const [dialog, setDialog] = useState(null);
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -63,7 +66,7 @@ export function Warehouses() {
   return (
     <Box>
       <PageHeader title="Warehouses" subtitle="Manage storage locations"
-        action={<Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setDialog(true); }}>Add Warehouse</Button>}
+        action={can(auth?.role, 'canEditMasterData') && <Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setDialog(true); }}>Add Warehouse</Button>}
       />
       {msg && <Alert severity={msg.type} sx={{ mb: 2 }} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       <Card elevation={2} sx={{ borderRadius: 3 }}>
@@ -86,7 +89,7 @@ export function Warehouses() {
                 <TableCell><Typography variant="body2" color="text.secondary">{w.address}</Typography></TableCell>
                 <TableCell align="right">{w.capacity}</TableCell>
                 <TableCell><StatusChip status={w.status} /></TableCell>
-                <TableCell><IconButton size="small" onClick={() => { setEditing(w); setDialog(true); }}><Edit /></IconButton></TableCell>
+                <TableCell>{can(auth?.role, 'canEditMasterData') && <IconButton size="small" onClick={() => { setEditing(w); setDialog(true); }}><Edit /></IconButton>}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -100,6 +103,7 @@ export function Warehouses() {
 
 // ─── MATERIALS ───────────────────────────────────────────────
 export function Materials() {
+  const { auth } = useAuth();
   const [dialog, setDialog] = useState(null);
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -129,7 +133,7 @@ export function Materials() {
   return (
     <Box>
       <PageHeader title="Materials" subtitle="Master list of all construction materials"
-        action={<Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setDialog(true); }}>Add Material</Button>}
+        action={can(auth?.role, 'canEditMasterData') && <Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setDialog(true); }}>Add Material</Button>}
       />
       {msg && <Alert severity={msg.type} sx={{ mb: 2 }} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       <Card elevation={2} sx={{ borderRadius: 3 }}>
@@ -154,7 +158,7 @@ export function Materials() {
                 <TableCell align="right">{m.reorderLevel}</TableCell>
                 <TableCell align="right">{m.reorderQty}</TableCell>
                 <TableCell><Typography variant="body2" color="text.secondary">{m.specifications}</Typography></TableCell>
-                <TableCell><IconButton size="small" onClick={() => { setEditing(m); setDialog(true); }}><Edit /></IconButton></TableCell>
+                <TableCell>{can(auth?.role, 'canEditMasterData') && <IconButton size="small" onClick={() => { setEditing(m); setDialog(true); }}><Edit /></IconButton>}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -168,6 +172,7 @@ export function Materials() {
 
 // ─── VENDORS ─────────────────────────────────────────────────
 export function Vendors() {
+  const { auth } = useAuth();
   const [dialog, setDialog] = useState(null);
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -196,7 +201,7 @@ export function Vendors() {
   return (
     <Box>
       <PageHeader title="Vendors" subtitle="Supplier and vendor management"
-        action={<Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setDialog(true); }}>Add Vendor</Button>}
+        action={can(auth?.role, 'canEditMasterData') && <Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setDialog(true); }}>Add Vendor</Button>}
       />
       {msg && <Alert severity={msg.type} sx={{ mb: 2 }} onClose={() => setMsg(null)}>{msg.text}</Alert>}
       <Card elevation={2} sx={{ borderRadius: 3 }}>
@@ -223,7 +228,7 @@ export function Vendors() {
                 <TableCell><Typography variant="body2" color="text.secondary">{v.address}</Typography></TableCell>
                 <TableCell align="right">{'⭐'.repeat(Math.round(v.rating))} {v.rating}</TableCell>
                 <TableCell><StatusChip status={v.status} /></TableCell>
-                <TableCell><IconButton size="small" onClick={() => { setEditing(v); setDialog(true); }}><Edit /></IconButton></TableCell>
+                <TableCell>{can(auth?.role, 'canEditMasterData') && <IconButton size="small" onClick={() => { setEditing(v); setDialog(true); }}><Edit /></IconButton>}</TableCell>
               </TableRow>
             ))}
           </TableBody>

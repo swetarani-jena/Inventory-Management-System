@@ -9,6 +9,8 @@ import { Add, CheckCircle, Cancel, ExpandMore, ExpandLess } from '@mui/icons-mat
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../services/api';
 import { PageHeader, StatusChip } from '../components/PageHeader';
+import { useAuth } from '../context/AuthContext';
+import { can } from '../services/permissions';
 
 const PRIORITIES = ['low', 'medium', 'high'];
 
@@ -60,7 +62,7 @@ const CreateDialog = ({ open, onClose, warehouses, materials, onSubmit }) => {
   );
 };
 
-const ExpandableRow = ({ req, warehouseMap, materialMap, onApprove, onReject }) => {
+const ExpandableRow = ({ req, warehouseMap, materialMap, canApprove, canReject, onApprove, onReject }) => {
   const [open, setOpen] = useState(false);
   const priorityColor = { low: 'default', medium: 'warning', high: 'error' };
 
@@ -77,8 +79,8 @@ const ExpandableRow = ({ req, warehouseMap, materialMap, onApprove, onReject }) 
         <TableCell>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
             {req.status === 'pending' && <>
-              <IconButton size="small" color="success" onClick={() => onApprove(req.requisitionId)}><CheckCircle /></IconButton>
-              <IconButton size="small" color="error"   onClick={() => onReject(req.requisitionId)}><Cancel /></IconButton>
+              {canApprove && <IconButton size="small" color="success" onClick={() => onApprove(req.requisitionId)}><CheckCircle /></IconButton>}
+              {canReject  && <IconButton size="small" color="error"   onClick={() => onReject(req.requisitionId)}><Cancel /></IconButton>}
             </>}
             <IconButton size="small" onClick={() => setOpen(o => !o)}>{open ? <ExpandLess /> : <ExpandMore />}</IconButton>
           </Box>
@@ -108,6 +110,7 @@ const ExpandableRow = ({ req, warehouseMap, materialMap, onApprove, onReject }) 
 };
 
 export default function Requisitions() {
+  const { auth } = useAuth();
   const [tab,    setTab]    = useState(0);
   const [dialog, setDialog] = useState(false);
   const [msg,    setMsg]    = useState(null);
@@ -158,6 +161,8 @@ export default function Requisitions() {
             {reqs?.map(req => (
               <ExpandableRow key={req.requisitionId} req={req}
                 warehouseMap={warehouseMap} materialMap={materialMap}
+                canApprove={can(auth?.role, 'canApproveRequisition')}
+                canReject={can(auth?.role, 'canRejectRequisition')}
                 onApprove={handleApprove} onReject={handleReject} />
             ))}
             {(!reqs || reqs.length === 0) && (
