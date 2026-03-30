@@ -6,8 +6,10 @@ const TABLE = process.env.REQUISITIONS_TABLE;
 
 exports.handler = async (event) => {
   const method        = event.httpMethod;
+  const path          = event.path;                                        // ← ADD
   const requisitionId = event.pathParameters?.requisitionId;
-  const subPath       = event.pathParameters?.subPath; // 'approve' | 'reject'
+  const subPath       = event.pathParameters?.subPath
+                        || path.split('/').filter(Boolean).pop();          // ← ADD fallback
   const qs            = event.queryStringParameters || {};
 
   if (method === 'GET' && !requisitionId) {

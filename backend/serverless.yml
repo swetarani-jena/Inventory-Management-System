@@ -545,6 +545,26 @@ functions:
           path: /purchase-orders/{poId}/deliver
           method: put
           cors: true
+  
+  transitPurchaseOrder:
+    handler: functions/purchaseOrders/index.handler
+    layers:
+      - !Ref HelpersLambdaLayer
+    events:
+      - http:
+          path: /purchase-orders/{poId}/transit
+          method: put
+          cors: true
+
+  cancelPurchaseOrder:
+    handler: functions/purchaseOrders/index.handler
+    layers:
+      - !Ref HelpersLambdaLayer
+    events:
+      - http:
+          path: /purchase-orders/{poId}/cancel
+          method: put
+          cors: true
 
   # ── Transfers ──────────────────────────────────────────────
   getTransfers:
@@ -584,6 +604,16 @@ functions:
     events:
       - http:
           path: /transfers/{transferId}/approve
+          method: put
+          cors: true
+  
+  rejectTransfer:
+    handler: functions/transfers/index.handler
+    layers:
+      - !Ref HelpersLambdaLayer
+    events:
+      - http:
+          path: /transfers/{transferId}/reject
           method: put
           cors: true
 

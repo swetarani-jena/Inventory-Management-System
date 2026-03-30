@@ -145,5 +145,37 @@ exports.handler = async (event) => {
     return ok(await enrich(Attributes));
   }
 
+    // PUT /purchase-orders/{poId}/transit
+  if (method === 'PUT' && poId && action === 'transit') {
+    const { Item } = await db.send(new GetCommand({ TableName: PO_TABLE, Key: { poId } }));
+    if (!Item) return notFound('Purchase Order not found');
+    if (Item.status !== 'sent') return badReq('Only sent orders can be marked in transit');
+
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: PO_TABLE, Key: { poId },
+      UpdateExpression: 'SET #s = :s',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: { ':s': 'in_transit' },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return ok(await enrich(Attributes));
+  }
+
+  // PUT /purchase-orders/{poId}/cancel
+  if (method === 'PUT' && poId && action === 'cancel') {
+    const { Item } = await db.send(new GetCommand({ TableName: PO_TABLE, Key: { poId } }));
+    if (!Item) return notFound('Purchase Order not found');
+    if (['delivered', 'cancelled'].includes(Item.status)) return badReq(`Cannot cancel a ${Item.status} order`);
+
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: PO_TABLE, Key: { poId },
+      UpdateExpression: 'SET #s = :s',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: { ':s': 'cancelled' },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return ok(await enrich(Attributes));
+  }
+
   return badReq('Method not supported');
 };

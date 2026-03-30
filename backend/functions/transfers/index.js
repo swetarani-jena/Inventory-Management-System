@@ -7,9 +7,12 @@ const INV_TABLE = process.env.INVENTORY_TABLE;
 const MAT_TABLE = process.env.MATERIALS_TABLE;
 
 exports.handler = async (event) => {
-  const method     = event.httpMethod;
-  const transferId = event.pathParameters?.transferId;
-  const subPath    = event.pathParameters?.subPath;
+  const method  = event.httpMethod;
+  const path    = event.path;
+  const poId    = event.pathParameters?.poId;
+  const action  = event.pathParameters?.action
+                  || path.split('/').filter(Boolean).pop();
+  const qs      = event.queryStringParameters || {};
 
   if (method === 'GET' && !transferId) {
     const { Items } = await db.send(new ScanCommand({ TableName: TABLE }));
@@ -26,23 +29,24 @@ exports.handler = async (event) => {
     if (!body.fromWarehouse || !body.toWarehouse || !body.items?.length)
       return badReq('fromWarehouse, toWarehouse, items are required');
     const transfer = {
-      transferId:  `TR${Date.now()}`,
-      transferNo:  `TRF-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
-      date:        new Date().toISOString().split('T')[0],
-      status:      'pending',
-      approvedBy:  null,
+      transferId: `TR${Date.now()}`,
+      transferNo: `TRF-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+      date:       new Date().toISOString().split('T')[0],
+      status:     'pending',
+      approvedBy: null,
       ...body,
     };
     await db.send(new PutCommand({ TableName: TABLE, Item: transfer }));
     return created(transfer);
   }
 
+  // ← approve and reject are now at the same level, not nested
   if (method === 'PUT' && transferId && subPath === 'approve') {
     const body     = JSON.parse(event.body || '{}');
     const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { transferId } }));
     if (!Item) return notFound('Transfer not found');
+    if (Item.status !== 'pending') return badReq('Only pending transfers can be approved');
 
-    // Move stock for each item
     for (const item of Item.items) {
       const { materialId, quantity } = item;
       const [srcRes, dstRes, matRes] = await Promise.all([
@@ -76,6 +80,27 @@ exports.handler = async (event) => {
       UpdateExpression: 'SET #s = :s, approvedBy = :a',
       ExpressionAttributeNames:  { '#s': 'status' },
       ExpressionAttributeValues: { ':s': 'completed', ':a': body.approvedBy || 'unknown' },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return ok(Attributes);
+  }
+
+  // ← reject is now a separate top-level block
+  if (method === 'PUT' && transferId && subPath === 'reject') {
+    const body = JSON.parse(event.body || '{}');
+    const { Item } = await db.send(new GetCommand({ TableName: TABLE, Key: { transferId } }));
+    if (!Item) return notFound('Transfer not found');
+    if (Item.status !== 'pending') return badReq('Only pending transfers can be rejected');
+
+    const { Attributes } = await db.send(new UpdateCommand({
+      TableName: TABLE, Key: { transferId },
+      UpdateExpression: 'SET #s = :s, rejectedBy = :r, rejectionReason = :rr',
+      ExpressionAttributeNames:  { '#s': 'status' },
+      ExpressionAttributeValues: {
+        ':s':  'rejected',
+        ':r':  body.rejectedBy || 'unknown',
+        ':rr': body.reason     || '',
+      },
       ReturnValues: 'ALL_NEW',
     }));
     return ok(Attributes);

@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import {
   Box, Card, Table, TableBody, TableCell, TableHead, TableRow,
   Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, CircularProgress, Alert, IconButton, Collapse
+  TextField, MenuItem, CircularProgress, Alert, IconButton, Collapse, Tooltip
 } from '@mui/material';
-import { Add, CheckCircle, ExpandMore, ExpandLess } from '@mui/icons-material';
+import { Add, CheckCircle, Cancel, ExpandMore, ExpandLess } from '@mui/icons-material';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../services/api';
 import { PageHeader, StatusChip } from '../components/PageHeader';
@@ -53,20 +53,26 @@ const CreateDialog = ({ open, onClose, warehouses, materials, onSubmit }) => {
 };
 
 // ← FIXED: accept warehouseMap + materialMap as props
-const TRow = ({ t, warehouseMap, materialMap, canApprove, onApprove }) => {
+const TRow = ({ t, warehouseMap, materialMap, canApprove, onApprove, onReject }) => {
   const [open, setOpen] = useState(false);
   return (
     <>
       <TableRow hover>
         <TableCell><Typography variant="body2" fontWeight={700}>{t.transferNo}</Typography></TableCell>
-        {/* ← FIXED: resolve names from maps */}
         <TableCell>{warehouseMap[t.fromWarehouse] || t.fromWarehouse}</TableCell>
         <TableCell>{warehouseMap[t.toWarehouse]   || t.toWarehouse}</TableCell>
         <TableCell>{t.date}</TableCell>
         <TableCell><StatusChip status={t.status} /></TableCell>
         <TableCell>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {canApprove && t.status === 'pending' && <IconButton size="small" color="success" onClick={() => onApprove(t.transferId)}><CheckCircle /></IconButton>}
+            {canApprove && t.status === 'pending' && <>
+              <Tooltip title="Approve Transfer">
+                <IconButton size="small" color="success" onClick={() => onApprove(t.transferId)}><CheckCircle /></IconButton>
+              </Tooltip>
+              <Tooltip title="Reject Transfer">
+                <IconButton size="small" color="error" onClick={() => onReject(t.transferId)}><Cancel /></IconButton>
+              </Tooltip>
+            </>}
             <IconButton size="small" onClick={() => setOpen(o => !o)}>{open ? <ExpandLess /> : <ExpandMore />}</IconButton>
           </Box>
         </TableCell>
@@ -101,14 +107,14 @@ export default function Transfers() {
   const { data: warehouses } = useFetch(api.getWarehouses);
   const { data: materials  } = useFetch(api.getMaterials);
 
-  // ← NEW: lookup maps
   const warehouseMap = useMemo(() =>
     Object.fromEntries((warehouses || []).map(w => [w.warehouseId, w.name])), [warehouses]);
   const materialMap = useMemo(() =>
     Object.fromEntries((materials || []).map(m => [m.materialId, m.name])), [materials]);
 
   const handleCreate  = async (body) => { await api.createTransfer(body);         reload(); setMsg({ type: 'success', text: 'Transfer requested!' }); };
-  const handleApprove = async (id)   => { await api.approveTransfer(id, { approvedBy: 'U002' }); reload(); setMsg({ type: 'success', text: 'Transfer approved and stock moved!' }); };
+  const handleApprove = async (id)   => { await api.approveTransfer(id, { approvedBy: auth.email }); reload(); setMsg({ type: 'success', text: 'Transfer approved and stock moved!' }); };
+  const handleReject = async (id) => { await api.rejectTransfer(id, { reason: 'Rejected by manager' }); reload(); setMsg({ type: 'info', text: 'Transfer rejected.' }); };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
@@ -136,7 +142,7 @@ export default function Transfers() {
               <TRow key={t.transferId} t={t}
                 warehouseMap={warehouseMap} materialMap={materialMap}
                 canApprove={can(auth?.role, 'canApproveTransfer')}
-                onApprove={handleApprove} />
+                onApprove={handleApprove} onReject={handleReject} />
             ))}
           </TableBody>
         </Table>

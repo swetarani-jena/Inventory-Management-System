@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import {
   Box, Card, Table, TableBody, TableCell, TableHead, TableRow,
   Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, CircularProgress, Alert, IconButton, Collapse, Chip
+  TextField, MenuItem, CircularProgress, Alert, IconButton, Collapse, Chip, Tooltip
 } from '@mui/material';
-import { Add, Send, LocalShipping, ExpandMore, ExpandLess } from '@mui/icons-material';
+import { Add, Send, LocalShipping, ExpandMore, ExpandLess, Cancel, DirectionsBus } from '@mui/icons-material';
 import { useFetch } from '../hooks/useFetch';
 import { api } from '../services/api';
 import { PageHeader, StatusChip } from '../components/PageHeader';
@@ -41,7 +41,7 @@ const CreateDialog = ({ open, onClose, vendors, materials, onSubmit }) => {
             <TextField select label="Material" value={item.materialId} onChange={e => setItem(i, 'materialId', e.target.value)} sx={{ flex: 2 }}>
               {materials?.map(m => <MenuItem key={m.materialId} value={m.materialId}>{m.name}</MenuItem>)}
             </TextField>
-            <TextField label="Qty" type="number" value={item.quantity}  onChange={e => setItem(i, 'quantity',  e.target.value)} sx={{ flex: 1 }} />
+            <TextField label="Qty" type="number" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)} sx={{ flex: 1 }} />
             <TextField label="Unit Price ₹" type="number" value={item.unitPrice} onChange={e => setItem(i, 'unitPrice', e.target.value)} sx={{ flex: 1 }} />
           </Box>
         ))}
@@ -56,7 +56,9 @@ const CreateDialog = ({ open, onClose, vendors, materials, onSubmit }) => {
   );
 };
 
-const PORow = ({ po, canSend, canDeliver, onSend, onDeliver }) => {
+// Status flow: generated → sent → in_transit → delivered
+//              any non-delivered/cancelled → cancelled
+const PORow = ({ po, canSend, canDeliver, canCancel, onSend, onTransit, onDeliver, onCancel }) => {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -68,9 +70,19 @@ const PORow = ({ po, canSend, canDeliver, onSend, onDeliver }) => {
         <TableCell align="right"><Typography fontWeight={700} color="primary.main">₹{po.totalAmount?.toLocaleString()}</Typography></TableCell>
         <TableCell><StatusChip status={po.status} /></TableCell>
         <TableCell>
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {canSend    && po.status === 'generated' && <IconButton size="small" color="primary"  onClick={() => onSend(po.poId)}    title="Send to Vendor"><Send /></IconButton>}
-            {canDeliver && po.status === 'sent'      && <IconButton size="small" color="success"  onClick={() => onDeliver(po.poId)} title="Mark Delivered"><LocalShipping /></IconButton>}
+          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+            {/* generated → sent */}
+            {canSend && po.status === 'generated' &&
+              <Tooltip title="Send to Vendor"><IconButton size="small" color="primary" onClick={() => onSend(po.poId)}><Send fontSize="small" /></IconButton></Tooltip>}
+            {/* sent → in_transit */}
+            {canSend && po.status === 'sent' &&
+              <Tooltip title="Mark In Transit"><IconButton size="small" color="warning" onClick={() => onTransit(po.poId)}><DirectionsBus fontSize="small" /></IconButton></Tooltip>}
+            {/* in_transit → delivered */}
+            {canDeliver && po.status === 'in_transit' &&
+              <Tooltip title="Mark Delivered"><IconButton size="small" color="success" onClick={() => onDeliver(po.poId)}><LocalShipping fontSize="small" /></IconButton></Tooltip>}
+            {/* cancel — any active status */}
+            {canCancel && !['delivered', 'cancelled'].includes(po.status) &&
+              <Tooltip title="Cancel Order"><IconButton size="small" color="error" onClick={() => onCancel(po.poId)}><Cancel fontSize="small" /></IconButton></Tooltip>}
             <IconButton size="small" onClick={() => setOpen(o => !o)}>{open ? <ExpandLess /> : <ExpandMore />}</IconButton>
           </Box>
         </TableCell>
@@ -79,6 +91,23 @@ const PORow = ({ po, canSend, canDeliver, onSend, onDeliver }) => {
         <TableCell colSpan={7} sx={{ py: 0 }}>
           <Collapse in={open}>
             <Box sx={{ p: 2, bgcolor: 'grey.50' }}>
+              {/* Status timeline */}
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
+                {['generated', 'sent', 'in_transit', 'delivered'].map((s, i, arr) => (
+                  <React.Fragment key={s}>
+                    <Chip
+                      label={s.replace('_', ' ').toUpperCase()}
+                      size="small"
+                      variant={po.status === s ? 'filled' : 'outlined'}
+                      color={po.status === s ? 'primary' : 'default'}
+                      sx={{ fontWeight: po.status === s ? 700 : 400, opacity: ['cancelled'].includes(po.status) ? 0.4 : 1 }}
+                    />
+                    {i < arr.length - 1 && <Typography color="text.disabled">→</Typography>}
+                  </React.Fragment>
+                ))}
+                {po.status === 'cancelled' && <Chip label="CANCELLED" size="small" color="error" />}
+              </Box>
+              {/* Items */}
               {po.items?.map(item => (
                 <Box key={item.itemId} sx={{ display: 'flex', gap: 3, py: 0.5 }}>
                   <Typography variant="body2" fontWeight={600} sx={{ width: 180 }}>{item.materialName}</Typography>
@@ -105,8 +134,10 @@ export default function PurchaseOrders() {
   const { data: materials } = useFetch(api.getMaterials);
 
   const handleCreate  = async (body) => { const r = await api.createPurchaseOrder(body); if (r.success) { reload(); setMsg({ type: 'success', text: 'PO created!' }); } };
-  const handleSend    = async (id)   => { await api.sendPO(id);    reload(); };
-  const handleDeliver = async (id)   => { await api.deliverPO(id); reload(); };
+  const handleSend    = async (id)   => { await api.sendPO(id);     reload(); setMsg({ type: 'success', text: 'PO sent to vendor!' }); };
+  const handleTransit = async (id)   => { await api.transitPO(id);  reload(); setMsg({ type: 'success', text: 'PO marked in transit!' }); };
+  const handleDeliver = async (id)   => { await api.deliverPO(id);  reload(); setMsg({ type: 'success', text: 'PO marked delivered!' }); };
+  const handleCancel  = async (id)   => { await api.cancelPO(id);   reload(); setMsg({ type: 'success', text: 'PO cancelled.' }); };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
@@ -131,7 +162,22 @@ export default function PurchaseOrders() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {pos?.map(po => <PORow key={po.poId} po={po} canSend={can(auth?.role, 'canSendPO')} canDeliver={can(auth?.role, 'canDeliverPO')} onSend={handleSend} onDeliver={handleDeliver} />)}
+            {pos?.map(po => (
+              <PORow key={po.poId} po={po}
+                canSend={can(auth?.role, 'canSendPO')}
+                canDeliver={can(auth?.role, 'canDeliverPO')}
+                canCancel={can(auth?.role, 'canCreatePO')}
+                onSend={handleSend}
+                onTransit={handleTransit}
+                onDeliver={handleDeliver}
+                onCancel={handleCancel}
+              />
+            ))}
+            {(!pos || pos.length === 0) && (
+              <TableRow><TableCell colSpan={7} align="center">
+                <Typography color="text.secondary" py={3}>No purchase orders found</Typography>
+              </TableCell></TableRow>
+            )}
           </TableBody>
         </Table>
       </Card>

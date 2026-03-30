@@ -50,11 +50,14 @@ export const api = {
   createPurchaseOrder: (body)        => post('/purchase-orders', body),
   sendPO:              (id)          => put(`/purchase-orders/${id}/send`, {}),
   deliverPO:           (id)          => put(`/purchase-orders/${id}/deliver`, {}),
+  transitPO:       (id) => put(`/purchase-orders/${id}/transit`, {}),
+  cancelPO:        (id) => put(`/purchase-orders/${id}/cancel`, {}),
 
   // Transfers
   getTransfers:    (params = {}) => get(`/transfers${toQuery(params)}`),
   createTransfer:  (body)        => post('/transfers', body),
   approveTransfer: (id, body)    => put(`/transfers/${id}/approve`, body),
+  rejectTransfer:  (id, body) => put(`/transfers/${id}/reject`, body),
 
   // Users
   getUsers: () => get('/users'),

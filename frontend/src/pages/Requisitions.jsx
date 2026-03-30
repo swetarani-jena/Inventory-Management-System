@@ -128,8 +128,8 @@ export default function Requisitions() {
     Object.fromEntries((materials || []).map(m => [m.materialId, m.name])), [materials]);
 
   const handleCreate  = async (body) => { await api.createRequisition(body); reload(); setMsg({ type: 'success', text: 'Requisition created!' }); };
-  const handleApprove = async (id)   => { await api.approveRequisition(id, { approvedBy: 'U002' }); reload(); setMsg({ type: 'success', text: 'Approved!' }); };
-  const handleReject  = async (id)   => { await api.rejectRequisition(id,  { reason: 'Rejected by manager' }); reload(); setMsg({ type: 'success', text: 'Rejected.' }); };
+  const handleApprove = async (id)   => { await api.approveRequisition(id, { approvedBy: auth.email }); reload(); setMsg({ type: 'success', text: 'Requisition approved!' }); };
+  const handleReject  = async (id)   => { await api.rejectRequisition(id, { rejectedBy: auth.email, reason: 'Rejected by manager' }); reload(); setMsg({ type: 'success', text: 'Requisition rejected.' }); };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
